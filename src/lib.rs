@@ -18,7 +18,7 @@ pub mod arrays {
     use std::fmt;
 
     use ndarray::s;
-    use ndarray::{ArrayBase, Axis, OwnedRepr};
+    use ndarray::{ArrayBase, Axis, Ix1, OwnedRepr};
     use ndarray::{Data, Dimension, RemoveAxis};
 
     use crate::types::RVector;
@@ -421,6 +421,144 @@ pub mod arrays {
         }
     }
 
+    /// Trait providing monotonicity checks for 1-D ndarray arrays.
+    pub trait Sequence<T>
+    where
+        T: PartialOrd + Copy,
+    {
+        /// Returns true if the array is monotonically (non-strictly) increasing.
+        fn is_monotonically_increasing(&self) -> Result<bool, ExtremaError>;
+
+        /// Returns true if the array is monotonically (non-strictly) decreasing.
+        fn is_monotonically_decreasing(&self) -> Result<bool, ExtremaError>;
+
+        /// Returns true if the array is strictly increasing.
+        fn is_strictly_increasing(&self) -> Result<bool, ExtremaError>;
+
+        /// Returns true if the array is strictly decreasing.
+        fn is_strictly_decreasing(&self) -> Result<bool, ExtremaError>;
+    }
+
+    impl<T, S> Sequence<T> for ArrayBase<S, Ix1>
+    where
+        T: PartialOrd + Copy,
+        S: Data<Elem = T>,
+    {
+        fn is_monotonically_increasing(&self) -> Result<bool, ExtremaError> {
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut iter = self.iter().copied();
+            let mut prev = iter.next().unwrap();
+
+            if prev.partial_cmp(&prev).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
+            }
+
+            for curr in iter {
+                if curr.partial_cmp(&curr).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match curr.partial_cmp(&prev) {
+                    Some(std::cmp::Ordering::Less) => return Ok(false),
+                    Some(_) => {} // >= ok
+                    None => return Err(ExtremaError::UndefinedOrder),
+                }
+
+                prev = curr;
+            }
+
+            Ok(true)
+        }
+
+        fn is_monotonically_decreasing(&self) -> Result<bool, ExtremaError> {
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut iter = self.iter().copied();
+            let mut prev = iter.next().unwrap();
+
+            if prev.partial_cmp(&prev).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
+            }
+
+            for curr in iter {
+                if curr.partial_cmp(&curr).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match curr.partial_cmp(&prev) {
+                    Some(std::cmp::Ordering::Greater) => return Ok(false),
+                    Some(_) => {} // <= ok
+                    None => return Err(ExtremaError::UndefinedOrder),
+                }
+
+                prev = curr;
+            }
+
+            Ok(true)
+        }
+
+        fn is_strictly_increasing(&self) -> Result<bool, ExtremaError> {
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut iter = self.iter().copied();
+            let mut prev = iter.next().unwrap();
+
+            if prev.partial_cmp(&prev).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
+            }
+
+            for curr in iter {
+                if curr.partial_cmp(&curr).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match curr.partial_cmp(&prev) {
+                    Some(std::cmp::Ordering::Greater) => {} // required
+                    _ => return Ok(false),                  // <= means not strictly
+                }
+
+                prev = curr;
+            }
+
+            Ok(true)
+        }
+
+        fn is_strictly_decreasing(&self) -> Result<bool, ExtremaError> {
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut iter = self.iter().copied();
+            let mut prev = iter.next().unwrap();
+
+            if prev.partial_cmp(&prev).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
+            }
+
+            for curr in iter {
+                if curr.partial_cmp(&curr).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match curr.partial_cmp(&prev) {
+                    Some(std::cmp::Ordering::Less) => {} // required
+                    _ => return Ok(false),               // >= means not strictly
+                }
+
+                prev = curr;
+            }
+
+            Ok(true)
+        }
+    }
+
     pub trait Integrable {
         fn trapezoid(&self, x: &RVector) -> f64;
     }
@@ -770,6 +908,101 @@ pub mod arrays {
             assert_eq!(a.minval(), Err(ExtremaError::UndefinedOrder));
             assert_eq!(a.argmax(), Err(ExtremaError::UndefinedOrder));
             assert_eq!(a.argmin(), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_increasing_true() {
+            let a = array![1.0, 2.0, 2.0, 5.0];
+            assert!(a.is_monotonically_increasing().unwrap());
+            assert!(!a.is_strictly_increasing().unwrap());
+        }
+
+        #[test]
+        fn test_increasing_false() {
+            let a = array![1.0, 3.0, 2.0];
+            assert!(!a.is_monotonically_increasing().unwrap());
+            assert!(!a.is_strictly_increasing().unwrap());
+        }
+
+        #[test]
+        fn test_strictly_increasing_true() {
+            let a = array![1.0, 2.0, 3.0];
+            assert!(a.is_strictly_increasing().unwrap());
+            assert!(a.is_monotonically_increasing().unwrap());
+        }
+
+        #[test]
+        fn test_decreasing_true() {
+            let a = array![5.0, 4.0, 4.0, 1.0];
+            assert!(a.is_monotonically_decreasing().unwrap());
+            assert!(!a.is_strictly_decreasing().unwrap());
+        }
+
+        #[test]
+        fn test_decreasing_false() {
+            let a = array![5.0, 3.0, 4.0];
+            assert!(!a.is_monotonically_decreasing().unwrap());
+            assert!(!a.is_strictly_decreasing().unwrap());
+        }
+
+        #[test]
+        fn test_strictly_decreasing_true() {
+            let a = array![5.0, 3.0, 1.0];
+            assert!(a.is_strictly_decreasing().unwrap());
+            assert!(a.is_monotonically_decreasing().unwrap());
+        }
+
+        #[test]
+        fn test_empty_array() {
+            let a = Array1::<f64>::zeros(0);
+            assert!(matches!(
+                a.is_monotonically_increasing(),
+                Err(ExtremaError::EmptyArray)
+            ));
+            assert!(matches!(
+                a.is_monotonically_decreasing(),
+                Err(ExtremaError::EmptyArray)
+            ));
+            assert!(matches!(
+                a.is_strictly_increasing(),
+                Err(ExtremaError::EmptyArray)
+            ));
+            assert!(matches!(
+                a.is_strictly_decreasing(),
+                Err(ExtremaError::EmptyArray)
+            ));
+        }
+
+        #[test]
+        fn test_nan_propagates_as_undefined_order() {
+            let a = array![1.0, f64::NAN, 2.0];
+
+            assert!(matches!(
+                a.is_monotonically_increasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+            assert!(matches!(
+                a.is_monotonically_decreasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+            assert!(matches!(
+                a.is_strictly_increasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+            assert!(matches!(
+                a.is_strictly_decreasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+        }
+
+        #[test]
+        fn test_nan_as_first_element() {
+            let a = array![f64::NAN, 1.0];
+
+            assert!(matches!(
+                a.is_monotonically_increasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
         }
     }
 }
