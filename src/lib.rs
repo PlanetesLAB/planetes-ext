@@ -1063,4 +1063,11 @@ pub mod types {
     #[cfg(feature = "complex")]
     /// A 3-dimensional array (tensor) of complex ([f64]) numbers.
     pub type CTensor = Array3<Complex<f64>>;
+
+    #[derive(Debug, Default, Clone)]
+    pub struct Vec3 {
+        pub x: f64,
+        pub y: f64,
+        pub z: f64,
+    }
 }
