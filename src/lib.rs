@@ -1008,6 +1008,9 @@ pub mod arrays {
 }
 
 pub mod types {
+    use std::iter::Sum;
+    use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
+
     use ndarray::{Array1, Array2, Array3, Array4, ArrayView1};
 
     /// Generic Vector (1D array)
@@ -1069,5 +1072,116 @@ pub mod types {
         pub x: f64,
         pub y: f64,
         pub z: f64,
+    }
+
+    impl Vec3 {
+        pub fn new(x: f64, y: f64, z: f64) -> Self {
+            Self { x, y, z }
+        }
+
+        pub fn to_array(&self) -> RVector {
+            ndarray::array![self.x, self.y, self.z]
+        }
+
+        pub fn from_array(arr: &RVector) -> Self {
+            assert_eq!(arr.len(), 3, "Array must have exactly 3 elements");
+            Self {
+                x: arr[0],
+                y: arr[1],
+                z: arr[2],
+            }
+        }
+
+        pub fn set(&mut self, x: f64, y: f64, z: f64) {
+            self.x = x;
+            self.y = y;
+            self.z = z;
+        }
+
+        pub fn zero() -> Self {
+            Self {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }
+        }
+
+        pub fn norm(&self) -> f64 {
+            (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+        }
+
+        pub fn dot(&self, other: &Vec3) -> f64 {
+            self.x * other.x + self.y * other.y + self.z * other.z
+        }
+    }
+
+    // Vector * scalar
+    impl Mul<f64> for Vec3 {
+        type Output = Vec3;
+
+        fn mul(self, rhs: f64) -> Vec3 {
+            Vec3 {
+                x: self.x * rhs,
+                y: self.y * rhs,
+                z: self.z * rhs,
+            }
+        }
+    }
+
+    // scalar * Vector (optional but often useful)
+    impl Mul<Vec3> for f64 {
+        type Output = Vec3;
+
+        fn mul(self, rhs: Vec3) -> Vec3 {
+            rhs * self
+        }
+    }
+
+    // Vector + Vector
+    impl Add for Vec3 {
+        type Output = Vec3;
+
+        fn add(self, rhs: Vec3) -> Vec3 {
+            Vec3 {
+                x: self.x + rhs.x,
+                y: self.y + rhs.y,
+                z: self.z + rhs.z,
+            }
+        }
+    }
+
+    impl AddAssign for Vec3 {
+        fn add_assign(&mut self, rhs: Vec3) {
+            self.x += rhs.x;
+            self.y += rhs.y;
+            self.z += rhs.z;
+        }
+    }
+
+    impl Sub for Vec3 {
+        type Output = Vec3;
+
+        fn sub(self, rhs: Vec3) -> Vec3 {
+            Vec3 {
+                x: self.x - rhs.x,
+                y: self.y - rhs.y,
+                z: self.z - rhs.z,
+            }
+        }
+    }
+
+    impl SubAssign for Vec3 {
+        fn sub_assign(&mut self, rhs: Vec3) {
+            self.x -= rhs.x;
+            self.y -= rhs.y;
+            self.z -= rhs.z;
+        }
+    }
+
+    // Enable iterator .sum()
+    impl Sum for Vec3 {
+        fn sum<I: Iterator<Item = Vec3>>(iter: I) -> Vec3 {
+            iter.fold(Vec3::zero(), |a, b| a + b)
+        }
     }
 }
