@@ -8,7 +8,9 @@ license = "MIT"
 [dependencies]
 ndarray = "0.16.1"
 num-complex = { version = "0.4", optional = true }
+serde = { version = "1.0.228", features = ["derive"], optional = true }
 
 [features]
 default = []
 complex = ["num-complex"]
+serde = ["dep:serde"]
