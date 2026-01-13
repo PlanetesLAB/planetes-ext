@@ -1067,6 +1067,7 @@ pub mod types {
     /// A 3-dimensional array (tensor) of complex ([f64]) numbers.
     pub type CTensor = Array3<Complex<f64>>;
 
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     #[derive(Debug, Default, Clone, Copy)]
     pub struct Vec3 {
         pub x: f64,
