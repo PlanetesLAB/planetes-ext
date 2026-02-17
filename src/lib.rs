@@ -1107,6 +1107,14 @@ pub mod types {
             }
         }
 
+        pub fn one() -> Self {
+            Self {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            }
+        }
+
         pub fn norm(&self) -> f64 {
             (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
         }
