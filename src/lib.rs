@@ -1009,7 +1009,7 @@ pub mod arrays {
 
 pub mod types {
     use std::iter::Sum;
-    use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
+    use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
     use ndarray::{Array1, Array2, Array3, Array4, ArrayView1};
 
@@ -1146,6 +1146,14 @@ pub mod types {
         }
     }
 
+    impl MulAssign<f64> for Vec3 {
+        fn mul_assign(&mut self, rhs: f64) {
+            self.x *= rhs;
+            self.y *= rhs;
+            self.z *= rhs;
+        }
+    }
+
     // Vector + Vector
     impl Add for Vec3 {
         type Output = Vec3;
@@ -1184,6 +1192,26 @@ pub mod types {
             self.x -= rhs.x;
             self.y -= rhs.y;
             self.z -= rhs.z;
+        }
+    }
+
+    impl Div<f64> for Vec3 {
+        type Output = Vec3;
+
+        fn div(self, rhs: f64) -> Vec3 {
+            Vec3 {
+                x: self.x / rhs,
+                y: self.y / rhs,
+                z: self.z / rhs,
+            }
+        }
+    }
+
+    impl DivAssign<f64> for Vec3 {
+        fn div_assign(&mut self, rhs: f64) {
+            self.x /= rhs;
+            self.y /= rhs;
+            self.z /= rhs;
         }
     }
 
