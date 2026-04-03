@@ -1022,6 +1022,9 @@ pub mod types {
     /// n-dimensional real vector view (1D view).
     pub type RVecView<'a> = ArrayView1<'a, f64>;
 
+    /// n-dimensional real vector mutable view (1D mutable view).
+    pub type RVecViewMut<'a> = ndarray::ArrayViewMut1<'a, f64>;
+
     /// Generic matrix (2D array)
     pub type Matrix<T> = Array2<T>;
 
@@ -1033,6 +1036,9 @@ pub mod types {
 
     /// n-dimensional real matrix view (2D view)
     pub type RMatView<'a> = ndarray::ArrayView2<'a, f64>;
+
+    /// n-dimensional real matrix mutable view (2D mutable view)
+    pub type RMatViewMut<'a> = ndarray::ArrayViewMut2<'a, f64>;
 
     /// Generic tensor (3D array)
     pub type Tensor<T> = Array3<T>;
