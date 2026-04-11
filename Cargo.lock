@@ -86,10 +86,11 @@ dependencies = [
 
 [[package]]
 name = "prosia-extensions"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "ndarray",
  "num-complex",
+ "num-traits",
  "serde",
 ]
 
