@@ -1012,6 +1012,7 @@ pub mod types {
     use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
     use ndarray::{Array1, Array2, Array3, Array4, ArrayView1};
+    use num_traits::Zero;
 
     /// Generic Vector (1D array)
     pub type Vector<T> = Array1<T>;
@@ -1233,6 +1234,16 @@ pub mod types {
     impl Sum for Vec3 {
         fn sum<I: Iterator<Item = Vec3>>(iter: I) -> Vec3 {
             iter.fold(Vec3::zero(), |a, b| a + b)
+        }
+    }
+
+    impl Zero for Vec3 {
+        fn zero() -> Self {
+            Vec3::zero()
+        }
+
+        fn is_zero(&self) -> bool {
+            self.x == 0.0 && self.y == 0.0 && self.z == 0.0
         }
     }
 }
