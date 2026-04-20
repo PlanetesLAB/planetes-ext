@@ -5,6 +5,16 @@ pub mod io {
     use std::io::Error;
     use std::path::Path;
 
+    /// Loads the contents of a file into a vector of strings, where each string is a line from the file.
+    ///
+    /// # Arguments
+    /// * `path` - A path to the file to be read. Can be any type that implements `AsRef<Path>`.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<String>)` containing the lines of the file if successful.
+    ///
+    /// # Errors
+    /// * `Err(Error)` if there was an error opening or reading the file.
     pub fn load_file_as_str<P: AsRef<Path>>(path: P) -> Result<Vec<String>, Error> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
@@ -44,7 +54,7 @@ pub mod arrays {
     impl std::error::Error for ExtremaError {}
 
     /// Extension trait providing convenience methods for computing extrema
-    /// (minima, maxima) and their indices on [ndarray::ArrayBase] values.
+    /// (minima, maxima) and their indices on [`ndarray::ArrayBase`] values.
     pub trait ArrayExtrema<T, D>
     where
         D: Dimension,
@@ -67,12 +77,20 @@ pub mod arrays {
         /// let empty: ndarray::Array1<i32> = ndarray::Array1::from_vec(vec![]);
         /// assert_eq!(empty.maxval(), Err(ExtremaError::EmptyArray));
         /// ```
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn maxval(&self) -> Result<T, ExtremaError>;
 
         /// Returns the minimum value in the array.
         ///
         /// Returns `Err(ExtremaError::UndefinedOrder)` if any NaN values are encountered,
         /// or `Err(ExtremaError::EmptyArray)` if the array is empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn minval(&self) -> Result<T, ExtremaError>;
 
         /// Returns an array of maximum values along the given axis.
@@ -84,6 +102,10 @@ pub mod arrays {
         /// # Panics
         /// Panics if any subview is empty, though this cannot occur if self
         /// itself is non-empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn maxval_along(
             &self,
             axis: Axis,
@@ -94,6 +116,10 @@ pub mod arrays {
         /// Each element of the returned array is the minimum of the slice taken
         /// along axis. Returns `Err(ExtremaError::UndefinedOrder)` if NaN values are encountered,
         /// or `Err(ExtremaError::EmptyArray)` if the array is empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn minval_along(
             &self,
             axis: Axis,
@@ -104,13 +130,21 @@ pub mod arrays {
         /// Returns `Err(ExtremaError::UndefinedOrder)` if any NaN values are encountered,
         /// or `Err(ExtremaError::EmptyArray)` if the array is empty.
         ///
-        /// The index is returned in [ndarray::Dimension::Pattern] form, which matches the array's dimensionality.
+        /// The index is returned in [`ndarray::Dimension::Pattern`] form, which matches the array's dimensionality.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn argmax(&self) -> Result<D::Pattern, ExtremaError>;
 
         /// Returns the index of the minimum element in the array.
         ///
         /// Returns `Err(ExtremaError::UndefinedOrder)` if any NaN values are encountered,
         /// or `Err(ExtremaError::EmptyArray)` if the array is empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn argmin(&self) -> Result<D::Pattern, ExtremaError>;
 
         /// Returns an array of indices of the maximum elements along the given axis.
@@ -118,6 +152,10 @@ pub mod arrays {
         /// Each element in the returned array is the index (within the axis) of the
         /// maximum value of the corresponding subview. Returns `Err(ExtremaError::UndefinedOrder)`
         /// if NaN values are encountered, or `Err(ExtremaError::EmptyArray)` if the array is empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn argmax_along(
             &self,
             axis: Axis,
@@ -128,6 +166,10 @@ pub mod arrays {
         /// Each element in the returned array is the index (within the axis) of the
         /// minimum value of the corresponding subview. Returns `Err(ExtremaError::UndefinedOrder)`
         /// if NaN values are encountered, or `Err(ExtremaError::EmptyArray)` if the array is empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn argmin_along(
             &self,
             axis: Axis,
@@ -140,14 +182,14 @@ pub mod arrays {
         S: Data<Elem = T>,
         D: Dimension + RemoveAxis,
     {
-        /// See [ArrayExtrema::maxval].
+        /// See [`ArrayExtrema::maxval`].
         fn maxval(&self) -> Result<T, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
             }
 
             let mut max_val = None;
-            for &val in self.iter() {
+            for &val in self {
                 // Check for NaN or incomparable values by comparing with itself
                 if val.partial_cmp(&val).is_none() {
                     return Err(ExtremaError::UndefinedOrder);
@@ -167,14 +209,14 @@ pub mod arrays {
             Ok(max_val.unwrap()) // Safe because we checked for empty array above
         }
 
-        /// See [ArrayExtrema::minval].
+        /// See [`ArrayExtrema::minval`].
         fn minval(&self) -> Result<T, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
             }
 
             let mut min_val = None;
-            for &val in self.iter() {
+            for &val in self {
                 // Check for NaN or incomparable values by comparing with itself
                 if val.partial_cmp(&val).is_none() {
                     return Err(ExtremaError::UndefinedOrder);
@@ -194,7 +236,7 @@ pub mod arrays {
             Ok(min_val.unwrap()) // Safe because we checked for empty array above
         }
 
-        /// See [ArrayExtrema::maxval_along].
+        /// See [`ArrayExtrema::maxval_along`].
         fn maxval_along(
             &self,
             axis: Axis,
@@ -205,7 +247,7 @@ pub mod arrays {
 
             let mut result = self.map_axis(axis, |subview| -> Result<T, ExtremaError> {
                 let mut max_val = None;
-                for &val in subview.iter() {
+                for &val in subview {
                     // Check for NaN or incomparable values by comparing with itself
                     if val.partial_cmp(&val).is_none() {
                         return Err(ExtremaError::UndefinedOrder);
@@ -224,7 +266,7 @@ pub mod arrays {
             });
 
             // Check if any subview computation failed
-            for elem in result.iter_mut() {
+            for elem in &mut result {
                 if let Err(err) = elem {
                     return Err(*err);
                 }
@@ -235,7 +277,7 @@ pub mod arrays {
             Ok(final_result)
         }
 
-        /// See [ArrayExtrema::minval_along].
+        /// See [`ArrayExtrema::minval_along`].
         fn minval_along(
             &self,
             axis: Axis,
@@ -246,7 +288,7 @@ pub mod arrays {
 
             let mut result = self.map_axis(axis, |subview| -> Result<T, ExtremaError> {
                 let mut min_val = None;
-                for &val in subview.iter() {
+                for &val in subview {
                     // Check for NaN or incomparable values by comparing with itself
                     if val.partial_cmp(&val).is_none() {
                         return Err(ExtremaError::UndefinedOrder);
@@ -265,7 +307,7 @@ pub mod arrays {
             });
 
             // Check if any subview computation failed
-            for elem in result.iter_mut() {
+            for elem in &mut result {
                 if let Err(err) = elem {
                     return Err(*err);
                 }
@@ -276,7 +318,7 @@ pub mod arrays {
             Ok(final_result)
         }
 
-        /// See [ArrayExtrema::argmax].
+        /// See [`ArrayExtrema::argmax`].
         fn argmax(&self) -> Result<D::Pattern, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -305,7 +347,7 @@ pub mod arrays {
             Ok(best.unwrap().0) // Safe because we checked for empty array above
         }
 
-        /// See [ArrayExtrema::argmin].
+        /// See [`ArrayExtrema::argmin`].
         fn argmin(&self) -> Result<D::Pattern, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -334,7 +376,7 @@ pub mod arrays {
             Ok(best.unwrap().0) // Safe because we checked for empty array above
         }
 
-        /// See [ArrayExtrema::argmax_along].
+        /// See [`ArrayExtrema::argmax_along`].
         fn argmax_along(
             &self,
             axis: Axis,
@@ -366,7 +408,7 @@ pub mod arrays {
             });
 
             // Check if any subview computation failed
-            for elem in result.iter_mut() {
+            for elem in &mut result {
                 if let Err(err) = elem {
                     return Err(*err);
                 }
@@ -377,7 +419,7 @@ pub mod arrays {
             Ok(final_result)
         }
 
-        /// See [ArrayExtrema::argmin_along].
+        /// See [`ArrayExtrema::argmin_along`].
         fn argmin_along(
             &self,
             axis: Axis,
@@ -409,7 +451,7 @@ pub mod arrays {
             });
 
             // Check if any subview computation failed
-            for elem in result.iter_mut() {
+            for elem in &mut result {
                 if let Err(err) = elem {
                     return Err(*err);
                 }
@@ -427,15 +469,27 @@ pub mod arrays {
         T: PartialOrd + Copy,
     {
         /// Returns true if the array is monotonically (non-strictly) increasing.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
         fn is_monotonically_increasing(&self) -> Result<bool, ExtremaError>;
 
         /// Returns true if the array is monotonically (non-strictly) decreasing.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
         fn is_monotonically_decreasing(&self) -> Result<bool, ExtremaError>;
 
         /// Returns true if the array is strictly increasing.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
         fn is_strictly_increasing(&self) -> Result<bool, ExtremaError>;
 
         /// Returns true if the array is strictly decreasing.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
         fn is_strictly_decreasing(&self) -> Result<bool, ExtremaError>;
     }
 
@@ -605,6 +659,7 @@ pub mod arrays {
     /// assert_eq!(find_index_le(7.0, &arr), None);
     /// assert_eq!(find_index_le(0.5, &arr), None);
     /// ```
+    #[must_use]
     pub fn find_index_le(val: f64, array: &[f64]) -> Option<usize> {
         if array.is_empty() || val < array[0] || val >= array[array.len() - 1] {
             return None;
@@ -642,6 +697,7 @@ pub mod arrays {
     /// assert_eq!(find_index_ge(0.5, &arr), None);
     /// assert_eq!(find_index_ge(8.0, &arr), None);
     /// ```
+    #[must_use]
     pub fn find_index_ge(val: f64, array: &[f64]) -> Option<usize> {
         if array.is_empty() || val > array[array.len() - 1] || val <= array[0] {
             return None;
@@ -654,7 +710,7 @@ pub mod arrays {
     /// **greater than or equal to** `val`.
     ///
     /// This is equivalent to [`find_index_ge`] but clamps the result to valid indices.
-    /// If `val` is less than or equal to the first element, returns `0`.  
+    /// If `val` is less than or equal to the first element, returns `0`.
     /// If `val` is greater than or equal to the last element, returns `array.len()`.
     ///
     /// # Examples
@@ -674,6 +730,7 @@ pub mod arrays {
     /// ```
     /// # See Also
     /// [`upper_bound_index`], [`find_index_ge`]
+    #[must_use]
     pub fn lower_bound_index(val: f64, array: &[f64]) -> usize {
         if array.is_empty() {
             return 0;
@@ -693,7 +750,7 @@ pub mod arrays {
     /// Returns the index of the **last element ≤ `val`** in a sorted slice.
     ///
     /// This behaves similarly to [`find_index_le`] but clamps the result to valid indices.
-    /// If `val` is less than the first element, returns `0`.  
+    /// If `val` is less than the first element, returns `0`.
     /// If `val` is greater than or equal to the last element, returns `array.len() - 1`.
     ///
     /// # Examples
@@ -712,6 +769,7 @@ pub mod arrays {
     /// ```
     /// # See Also
     /// [`lower_bound_index`], [`find_index_le`]
+    #[must_use]
     pub fn upper_bound_index(val: f64, array: &[f64]) -> usize {
         if array.is_empty() {
             return 0;
@@ -1083,14 +1141,21 @@ pub mod types {
     }
 
     impl Vec3 {
+        #[must_use]
         pub fn new(x: f64, y: f64, z: f64) -> Self {
             Self { x, y, z }
         }
 
+        #[must_use]
         pub fn to_array(&self) -> RVector {
             ndarray::array![self.x, self.y, self.z]
         }
 
+        /// Creates a `Vec3` from a 1D array. The array must have exactly 3 elements.
+        ///
+        /// # Panics
+        /// Panics if the input array does not have exactly 3 elements.
+        #[must_use]
         pub fn from_array(arr: &RVector) -> Self {
             assert_eq!(arr.len(), 3, "Array must have exactly 3 elements");
             Self {
@@ -1106,6 +1171,7 @@ pub mod types {
             self.z = z;
         }
 
+        #[must_use]
         pub fn zero() -> Self {
             Self {
                 x: 0.0,
@@ -1114,6 +1180,7 @@ pub mod types {
             }
         }
 
+        #[must_use]
         pub fn one() -> Self {
             Self {
                 x: 1.0,
@@ -1122,14 +1189,17 @@ pub mod types {
             }
         }
 
+        #[must_use]
         pub fn norm(&self) -> f64 {
             (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
         }
 
+        #[must_use]
         pub fn dot(&self, other: &Vec3) -> f64 {
             self.x * other.x + self.y * other.y + self.z * other.z
         }
 
+        #[must_use]
         pub fn cross(&self, other: &Vec3) -> Vec3 {
             Vec3 {
                 x: self.y * other.z - self.z * other.y,
