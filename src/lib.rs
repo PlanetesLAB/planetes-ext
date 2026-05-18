@@ -183,6 +183,7 @@ pub mod arrays {
         D: Dimension + RemoveAxis,
     {
         /// See [`ArrayExtrema::maxval`].
+        #[inline]
         fn maxval(&self) -> Result<T, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -210,6 +211,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::minval`].
+        #[inline]
         fn minval(&self) -> Result<T, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -237,6 +239,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::maxval_along`].
+        #[inline]
         fn maxval_along(
             &self,
             axis: Axis,
@@ -278,6 +281,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::minval_along`].
+        #[inline]
         fn minval_along(
             &self,
             axis: Axis,
@@ -319,6 +323,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::argmax`].
+        #[inline]
         fn argmax(&self) -> Result<D::Pattern, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -348,6 +353,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::argmin`].
+        #[inline]
         fn argmin(&self) -> Result<D::Pattern, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -377,6 +383,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::argmax_along`].
+        #[inline]
         fn argmax_along(
             &self,
             axis: Axis,
@@ -420,6 +427,7 @@ pub mod arrays {
         }
 
         /// See [`ArrayExtrema::argmin_along`].
+        #[inline]
         fn argmin_along(
             &self,
             axis: Axis,
@@ -498,6 +506,7 @@ pub mod arrays {
         T: PartialOrd + Copy,
         S: Data<Elem = T>,
     {
+        #[inline]
         fn is_monotonically_increasing(&self) -> Result<bool, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -527,6 +536,7 @@ pub mod arrays {
             Ok(true)
         }
 
+        #[inline]
         fn is_monotonically_decreasing(&self) -> Result<bool, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -556,6 +566,7 @@ pub mod arrays {
             Ok(true)
         }
 
+        #[inline]
         fn is_strictly_increasing(&self) -> Result<bool, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -584,6 +595,7 @@ pub mod arrays {
             Ok(true)
         }
 
+        #[inline]
         fn is_strictly_decreasing(&self) -> Result<bool, ExtremaError> {
             if self.is_empty() {
                 return Err(ExtremaError::EmptyArray);
@@ -618,6 +630,7 @@ pub mod arrays {
     }
 
     impl Integrable for RVector {
+        #[inline]
         fn trapezoid(&self, x: &RVector) -> f64 {
             assert_eq!(self.len(), x.len(), "Arrays must have the same length");
 
@@ -660,6 +673,7 @@ pub mod arrays {
     /// assert_eq!(find_index_le(0.5, &arr), None);
     /// ```
     #[must_use]
+    #[inline]
     pub fn find_index_le(val: f64, array: &[f64]) -> Option<usize> {
         if array.is_empty() || val < array[0] || val >= array[array.len() - 1] {
             return None;
@@ -698,6 +712,7 @@ pub mod arrays {
     /// assert_eq!(find_index_ge(8.0, &arr), None);
     /// ```
     #[must_use]
+    #[inline]
     pub fn find_index_ge(val: f64, array: &[f64]) -> Option<usize> {
         if array.is_empty() || val > array[array.len() - 1] || val <= array[0] {
             return None;
@@ -731,6 +746,7 @@ pub mod arrays {
     /// # See Also
     /// [`upper_bound_index`], [`find_index_ge`]
     #[must_use]
+    #[inline]
     pub fn lower_bound_index(val: f64, array: &[f64]) -> usize {
         if array.is_empty() {
             return 0;
@@ -770,6 +786,7 @@ pub mod arrays {
     /// # See Also
     /// [`lower_bound_index`], [`find_index_le`]
     #[must_use]
+    #[inline]
     pub fn upper_bound_index(val: f64, array: &[f64]) -> usize {
         if array.is_empty() {
             return 0;
@@ -1142,11 +1159,13 @@ pub mod types {
 
     impl Vec3 {
         #[must_use]
+        #[inline]
         pub fn new(x: f64, y: f64, z: f64) -> Self {
             Self { x, y, z }
         }
 
         #[must_use]
+        #[inline]
         pub fn to_array(&self) -> RVector {
             ndarray::array![self.x, self.y, self.z]
         }
@@ -1156,6 +1175,7 @@ pub mod types {
         /// # Panics
         /// Panics if the input array does not have exactly 3 elements.
         #[must_use]
+        #[inline]
         pub fn from_array(arr: &RVector) -> Self {
             assert_eq!(arr.len(), 3, "Array must have exactly 3 elements");
             Self {
@@ -1165,6 +1185,7 @@ pub mod types {
             }
         }
 
+        #[inline]
         pub fn set(&mut self, x: f64, y: f64, z: f64) {
             self.x = x;
             self.y = y;
@@ -1172,6 +1193,7 @@ pub mod types {
         }
 
         #[must_use]
+        #[inline]
         pub fn zero() -> Self {
             Self {
                 x: 0.0,
@@ -1181,6 +1203,7 @@ pub mod types {
         }
 
         #[must_use]
+        #[inline]
         pub fn one() -> Self {
             Self {
                 x: 1.0,
@@ -1190,16 +1213,19 @@ pub mod types {
         }
 
         #[must_use]
+        #[inline]
         pub fn norm(&self) -> f64 {
             (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
         }
 
         #[must_use]
+        #[inline]
         pub fn dot(&self, other: &Vec3) -> f64 {
             self.x * other.x + self.y * other.y + self.z * other.z
         }
 
         #[must_use]
+        #[inline]
         pub fn cross(&self, other: &Vec3) -> Vec3 {
             Vec3 {
                 x: self.y * other.z - self.z * other.y,
@@ -1213,6 +1239,7 @@ pub mod types {
     impl Mul<f64> for Vec3 {
         type Output = Vec3;
 
+        #[inline]
         fn mul(self, rhs: f64) -> Vec3 {
             Vec3 {
                 x: self.x * rhs,
@@ -1226,12 +1253,14 @@ pub mod types {
     impl Mul<Vec3> for f64 {
         type Output = Vec3;
 
+        #[inline]
         fn mul(self, rhs: Vec3) -> Vec3 {
             rhs * self
         }
     }
 
     impl MulAssign<f64> for Vec3 {
+        #[inline]
         fn mul_assign(&mut self, rhs: f64) {
             self.x *= rhs;
             self.y *= rhs;
@@ -1243,6 +1272,7 @@ pub mod types {
     impl Add for Vec3 {
         type Output = Vec3;
 
+        #[inline]
         fn add(self, rhs: Vec3) -> Vec3 {
             Vec3 {
                 x: self.x + rhs.x,
@@ -1253,6 +1283,7 @@ pub mod types {
     }
 
     impl AddAssign for Vec3 {
+        #[inline]
         fn add_assign(&mut self, rhs: Vec3) {
             self.x += rhs.x;
             self.y += rhs.y;
@@ -1263,6 +1294,7 @@ pub mod types {
     impl Sub for Vec3 {
         type Output = Vec3;
 
+        #[inline]
         fn sub(self, rhs: Vec3) -> Vec3 {
             Vec3 {
                 x: self.x - rhs.x,
@@ -1273,6 +1305,7 @@ pub mod types {
     }
 
     impl SubAssign for Vec3 {
+        #[inline]
         fn sub_assign(&mut self, rhs: Vec3) {
             self.x -= rhs.x;
             self.y -= rhs.y;
@@ -1283,6 +1316,7 @@ pub mod types {
     impl Div<f64> for Vec3 {
         type Output = Vec3;
 
+        #[inline]
         fn div(self, rhs: f64) -> Vec3 {
             Vec3 {
                 x: self.x / rhs,
@@ -1293,6 +1327,7 @@ pub mod types {
     }
 
     impl DivAssign<f64> for Vec3 {
+        #[inline]
         fn div_assign(&mut self, rhs: f64) {
             self.x /= rhs;
             self.y /= rhs;
@@ -1302,16 +1337,19 @@ pub mod types {
 
     // Enable iterator .sum()
     impl Sum for Vec3 {
+        #[inline]
         fn sum<I: Iterator<Item = Vec3>>(iter: I) -> Vec3 {
             iter.fold(Vec3::zero(), |a, b| a + b)
         }
     }
 
     impl Zero for Vec3 {
+        #[inline]
         fn zero() -> Self {
             Vec3::zero()
         }
 
+        #[inline]
         fn is_zero(&self) -> bool {
             self.x == 0.0 && self.y == 0.0 && self.z == 0.0
         }
