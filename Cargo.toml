@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2024"
 description = "Useful extensions for types, arrays and other helper functions for Prosia projects."
 license = "MIT"
+repository = "https://github.com/ProsiaLAB/prosia-extensions"
 
 [dependencies]
 ndarray = "0.17.1"
