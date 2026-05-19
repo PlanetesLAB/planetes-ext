@@ -18,9 +18,7 @@ pub mod io {
     pub fn load_file_as_str<P: AsRef<Path>>(path: P) -> Result<Vec<String>, Error> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
-        let all_lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
-
-        Ok(all_lines)
+        reader.lines().collect()
     }
 }
 
