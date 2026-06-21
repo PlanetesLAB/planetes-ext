@@ -497,6 +497,18 @@ pub mod arrays {
         /// # Errors
         /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
         fn is_strictly_decreasing(&self) -> Result<bool, ExtremaError>;
+
+        /// Returns true if the array is strictly monotonic.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        fn is_strictly_monotonic(&self) -> Result<bool, ExtremaError>;
+
+        /// Returns true if the array is monotonic (non-decreasing or non-increasing).
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        fn is_monotonic(&self) -> Result<bool, ExtremaError>;
     }
 
     impl<T, S> Sequence<T> for ArrayBase<S, Ix1>
@@ -614,6 +626,91 @@ pub mod arrays {
                 match curr.partial_cmp(&prev) {
                     Some(std::cmp::Ordering::Less) => {} // required
                     _ => return Ok(false),               // >= means not strictly
+                }
+
+                prev = curr;
+            }
+
+            Ok(true)
+        }
+
+        #[inline]
+        fn is_strictly_monotonic(&self) -> Result<bool, ExtremaError> {
+            use std::cmp::Ordering;
+
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut iter = self.iter().copied();
+            let mut prev = iter.next().unwrap();
+
+            if prev.partial_cmp(&prev).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
+            }
+
+            let mut direction: Option<Ordering> = None;
+
+            for curr in iter {
+                if curr.partial_cmp(&curr).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match curr.partial_cmp(&prev) {
+                    Some(Ordering::Greater) => {
+                        if direction == Some(Ordering::Less) {
+                            return Ok(false);
+                        }
+                        direction = Some(Ordering::Greater);
+                    }
+                    Some(Ordering::Less) => {
+                        if direction == Some(Ordering::Greater) {
+                            return Ok(false);
+                        }
+                        direction = Some(Ordering::Less);
+                    }
+                    Some(Ordering::Equal) => return Ok(false),
+                    None => return Err(ExtremaError::UndefinedOrder),
+                }
+
+                prev = curr;
+            }
+
+            Ok(true)
+        }
+
+        #[inline]
+        fn is_monotonic(&self) -> Result<bool, ExtremaError> {
+            use std::cmp::Ordering;
+
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut iter = self.iter().copied();
+            let mut prev = iter.next().unwrap();
+
+            if prev.partial_cmp(&prev).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
+            }
+
+            let mut seen_increase = false;
+            let mut seen_decrease = false;
+
+            for curr in iter {
+                if curr.partial_cmp(&curr).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match curr.partial_cmp(&prev) {
+                    Some(Ordering::Greater) => seen_increase = true,
+                    Some(Ordering::Less) => seen_decrease = true,
+                    Some(Ordering::Equal) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
+                }
+
+                if seen_increase && seen_decrease {
+                    return Ok(false);
                 }
 
                 prev = curr;
