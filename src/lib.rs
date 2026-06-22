@@ -743,7 +743,10 @@ pub mod arrays {
         fn as_real_slice(&self) -> &[f64];
     }
 
-    impl AsRealSlice for RVector {
+    impl<S> AsRealSlice for ArrayBase<S, Ix1>
+    where
+        S: Data<Elem = f64>,
+    {
         #[inline]
         fn as_real_slice(&self) -> &[f64] {
             self.as_slice().expect("1-D Array assumed contiguous.")
