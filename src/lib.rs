@@ -738,6 +738,18 @@ pub mod arrays {
         }
     }
 
+    pub trait AsRealSlice {
+        /// Returns a reference to the underlying real slice, assuming it is contiguous (standard layout).
+        fn as_real_slice(&self) -> &[f64];
+    }
+
+    impl AsRealSlice for RVector {
+        #[inline]
+        fn as_real_slice(&self) -> &[f64] {
+            self.as_slice().expect("1-D Array assumed contiguous.")
+        }
+    }
+
     /// Returns the index of the largest element in a sorted slice that is
     /// less than or equal to the given value.
     ///
