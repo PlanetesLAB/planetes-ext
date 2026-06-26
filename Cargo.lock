@@ -61,6 +61,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "planetes-ext"
+version = "0.1.0"
+dependencies = [
+ "ndarray",
+ "num-complex",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -82,16 +92,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "535d180e0ecab6268a3e718bb9fd44db66bbbc256257165fc699dadf70d16fe7"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "prosia-extensions"
-version = "0.4.1"
-dependencies = [
- "ndarray",
- "num-complex",
- "num-traits",
- "serde",
 ]
 
 [[package]]

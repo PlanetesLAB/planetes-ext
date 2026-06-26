@@ -1,10 +1,10 @@
 [package]
-name = "prosia-extensions"
-version = "0.4.1"
+name = "planetes-ext"
+version = "0.1.0"
 edition = "2024"
-description = "Useful extensions for types, arrays and other helper functions for Prosia projects."
+description = "Useful extensions for types, arrays and other helper functions for PlanetesLAB projects."
 license = "MIT"
-repository = "https://github.com/ProsiaLAB/prosia-extensions"
+repository = "https://github.com/PlanetesLAB/planetes-ext"
 
 [dependencies]
 ndarray = "0.17.1"

@@ -66,8 +66,8 @@ pub mod arrays {
         ///
         /// ```
         /// use ndarray::array;
-        /// use prosia_extensions::arrays::ArrayExtrema;
-        /// use prosia_extensions::arrays::ExtremaError;
+        /// use planetes_ext::arrays::ArrayExtrema;
+        /// use planetes_ext::arrays::ExtremaError;
         ///
         /// let a = array![1, 3, 2];
         /// assert_eq!(a.maxval(), Ok(3));
@@ -774,7 +774,7 @@ pub mod arrays {
     ///
     /// # Example
     /// ```
-    /// use prosia_extensions::arrays::find_index_le;
+    /// use planetes_ext::arrays::find_index_le;
     ///
     /// let arr = [1.0, 2.5, 4.0, 7.0];
     /// assert_eq!(find_index_le(3.0, &arr), Some(1)); // arr[1] = 2.5
@@ -813,7 +813,7 @@ pub mod arrays {
     ///
     /// # Example
     /// ```
-    /// use prosia_extensions::arrays::find_index_ge;
+    /// use planetes_ext::arrays::find_index_ge;
     ///
     /// let arr = [1.0, 2.5, 4.0, 7.0];
     /// assert_eq!(find_index_ge(3.0, &arr), Some(2)); // arr[2] = 4.0
@@ -840,7 +840,7 @@ pub mod arrays {
     ///
     /// # Examples
     /// ```
-    /// use prosia_extensions::arrays::lower_bound_index;
+    /// use planetes_ext::arrays::lower_bound_index;
     ///
     /// let arr = [1.0, 3.0, 5.0, 7.0];
     ///
@@ -881,7 +881,7 @@ pub mod arrays {
     ///
     /// # Examples
     /// ```
-    /// use prosia_extensions::arrays::upper_bound_index;
+    /// use planetes_ext::arrays::upper_bound_index;
     /// let arr = [1.0, 3.0, 5.0, 7.0];
     ///
     /// // Largest element ≤ 4.0 is 3.0 at index 1
