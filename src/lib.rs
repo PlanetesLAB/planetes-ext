@@ -180,7 +180,6 @@ pub mod arrays {
         S: Data<Elem = T>,
         D: Dimension + RemoveAxis,
     {
-        /// See [`ArrayExtrema::maxval`].
         #[inline]
         fn maxval(&self) -> Result<T, ExtremaError> {
             if self.is_empty() {
@@ -208,7 +207,6 @@ pub mod arrays {
             Ok(max_val.unwrap()) // Safe because we checked for empty array above
         }
 
-        /// See [`ArrayExtrema::minval`].
         #[inline]
         fn minval(&self) -> Result<T, ExtremaError> {
             if self.is_empty() {
@@ -236,7 +234,6 @@ pub mod arrays {
             Ok(min_val.unwrap()) // Safe because we checked for empty array above
         }
 
-        /// See [`ArrayExtrema::maxval_along`].
         #[inline]
         fn maxval_along(
             &self,
@@ -278,7 +275,6 @@ pub mod arrays {
             Ok(final_result)
         }
 
-        /// See [`ArrayExtrema::minval_along`].
         #[inline]
         fn minval_along(
             &self,
@@ -320,7 +316,6 @@ pub mod arrays {
             Ok(final_result)
         }
 
-        /// See [`ArrayExtrema::argmax`].
         #[inline]
         fn argmax(&self) -> Result<D::Pattern, ExtremaError> {
             if self.is_empty() {
@@ -350,7 +345,6 @@ pub mod arrays {
             Ok(best.unwrap().0) // Safe because we checked for empty array above
         }
 
-        /// See [`ArrayExtrema::argmin`].
         #[inline]
         fn argmin(&self) -> Result<D::Pattern, ExtremaError> {
             if self.is_empty() {
@@ -380,7 +374,6 @@ pub mod arrays {
             Ok(best.unwrap().0) // Safe because we checked for empty array above
         }
 
-        /// See [`ArrayExtrema::argmax_along`].
         #[inline]
         fn argmax_along(
             &self,
@@ -424,7 +417,6 @@ pub mod arrays {
             Ok(final_result)
         }
 
-        /// See [`ArrayExtrema::argmin_along`].
         #[inline]
         fn argmin_along(
             &self,
