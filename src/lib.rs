@@ -91,6 +91,16 @@ pub mod arrays {
         /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
         fn minval(&self) -> Result<T, ExtremaError>;
 
+        /// Returns the minimum and maximum values in the array.
+        ///
+        /// Returns `Err(ExtremaError::UndefinedOrder)` if any NaN values are encountered,
+        /// or `Err(ExtremaError::EmptyArray)` if the array is empty.
+        ///
+        /// # Errors
+        /// * `Err(ExtremaError::EmptyArray)` if the array has no elements.
+        /// * `Err(ExtremaError::UndefinedOrder)` if any element is NaN or otherwise incomparable.
+        fn minmax(&self) -> Result<(T, T), ExtremaError>;
+
         /// Returns an array of maximum values along the given axis.
         ///
         /// Each element of the returned array is the maximum of the slice taken
@@ -232,6 +242,44 @@ pub mod arrays {
                 }
             }
             Ok(min_val.unwrap()) // Safe because we checked for empty array above
+        }
+
+        #[inline]
+        fn minmax(&self) -> Result<(T, T), ExtremaError> {
+            if self.is_empty() {
+                return Err(ExtremaError::EmptyArray);
+            }
+
+            let mut min_val = None;
+            let mut max_val = None;
+            for &val in self {
+                // Check for NaN or incomparable values by comparing with itself
+                if val.partial_cmp(&val).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
+                }
+
+                match min_val {
+                    None => {
+                        min_val = Some(val);
+                        max_val = Some(val);
+                    }
+                    Some(current_min) => {
+                        match val.partial_cmp(&current_min) {
+                            Some(std::cmp::Ordering::Less) => min_val = Some(val),
+                            Some(_) => {} // val >= current_min, keep current_min
+                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
+                        }
+                        
+                        let current_max = max_val.unwrap();
+                        match val.partial_cmp(&current_max) {
+                            Some(std::cmp::Ordering::Greater) => max_val = Some(val),
+                            Some(_) => {} // val <= current_max, keep current_max
+                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
+                        }
+                    }
+                }
+            }
+            Ok((min_val.unwrap(), max_val.unwrap())) // Safe because we checked for empty array above
         }
 
         #[inline]
