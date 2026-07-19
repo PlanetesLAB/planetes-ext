@@ -25,7 +25,6 @@ pub mod io {
 pub mod arrays {
     use std::fmt;
 
-    use ndarray::s;
     use ndarray::{ArrayBase, Axis, Ix1, OwnedRepr};
     use ndarray::{Data, Dimension, RemoveAxis};
 
@@ -192,94 +191,62 @@ pub mod arrays {
     {
         #[inline]
         fn maxval(&self) -> Result<T, ExtremaError> {
-            if self.is_empty() {
-                return Err(ExtremaError::EmptyArray);
+            let mut iter = self.iter();
+            let &first = iter.next().ok_or(ExtremaError::EmptyArray)?;
+            if first.partial_cmp(&first).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
             }
-
-            let mut max_val = None;
-            for &val in self {
-                // Check for NaN or incomparable values by comparing with itself
-                if val.partial_cmp(&val).is_none() {
-                    return Err(ExtremaError::UndefinedOrder);
-                }
-
-                match max_val {
-                    None => max_val = Some(val),
-                    Some(current_max) => {
-                        match val.partial_cmp(&current_max) {
-                            Some(std::cmp::Ordering::Greater) => max_val = Some(val),
-                            Some(_) => {} // val <= current_max, keep current_max
-                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
-                        }
-                    }
+            let mut max_val = first;
+            for &val in iter {
+                match val.partial_cmp(&max_val) {
+                    Some(std::cmp::Ordering::Greater) => max_val = val,
+                    Some(_) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
                 }
             }
-            Ok(max_val.unwrap()) // Safe because we checked for empty array above
+            Ok(max_val)
         }
 
         #[inline]
         fn minval(&self) -> Result<T, ExtremaError> {
-            if self.is_empty() {
-                return Err(ExtremaError::EmptyArray);
+            let mut iter = self.iter();
+            let &first = iter.next().ok_or(ExtremaError::EmptyArray)?;
+            if first.partial_cmp(&first).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
             }
-
-            let mut min_val = None;
-            for &val in self {
-                // Check for NaN or incomparable values by comparing with itself
-                if val.partial_cmp(&val).is_none() {
-                    return Err(ExtremaError::UndefinedOrder);
-                }
-
-                match min_val {
-                    None => min_val = Some(val),
-                    Some(current_min) => {
-                        match val.partial_cmp(&current_min) {
-                            Some(std::cmp::Ordering::Less) => min_val = Some(val),
-                            Some(_) => {} // val >= current_min, keep current_min
-                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
-                        }
-                    }
+            let mut min_val = first;
+            for &val in iter {
+                match val.partial_cmp(&min_val) {
+                    Some(std::cmp::Ordering::Less) => min_val = val,
+                    Some(_) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
                 }
             }
-            Ok(min_val.unwrap()) // Safe because we checked for empty array above
+            Ok(min_val)
         }
 
         #[inline]
         fn minmax(&self) -> Result<(T, T), ExtremaError> {
-            if self.is_empty() {
-                return Err(ExtremaError::EmptyArray);
+            let mut iter = self.iter();
+            let &first = iter.next().ok_or(ExtremaError::EmptyArray)?;
+            if first.partial_cmp(&first).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
             }
-
-            let mut min_val = None;
-            let mut max_val = None;
-            for &val in self {
-                // Check for NaN or incomparable values by comparing with itself
-                if val.partial_cmp(&val).is_none() {
-                    return Err(ExtremaError::UndefinedOrder);
+            let mut min_val = first;
+            let mut max_val = first;
+            for &val in iter {
+                match val.partial_cmp(&min_val) {
+                    Some(std::cmp::Ordering::Less) => min_val = val,
+                    Some(_) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
                 }
-
-                match min_val {
-                    None => {
-                        min_val = Some(val);
-                        max_val = Some(val);
-                    }
-                    Some(current_min) => {
-                        match val.partial_cmp(&current_min) {
-                            Some(std::cmp::Ordering::Less) => min_val = Some(val),
-                            Some(_) => {} // val >= current_min, keep current_min
-                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
-                        }
-                        
-                        let current_max = max_val.unwrap();
-                        match val.partial_cmp(&current_max) {
-                            Some(std::cmp::Ordering::Greater) => max_val = Some(val),
-                            Some(_) => {} // val <= current_max, keep current_max
-                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
-                        }
-                    }
+                match val.partial_cmp(&max_val) {
+                    Some(std::cmp::Ordering::Greater) => max_val = val,
+                    Some(_) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
                 }
             }
-            Ok((min_val.unwrap(), max_val.unwrap())) // Safe because we checked for empty array above
+            Ok((min_val, max_val))
         }
 
         #[inline]
@@ -291,36 +258,26 @@ pub mod arrays {
                 return Err(ExtremaError::EmptyArray);
             }
 
-            let mut result = self.map_axis(axis, |subview| -> Result<T, ExtremaError> {
-                let mut max_val = None;
-                for &val in subview {
-                    // Check for NaN or incomparable values by comparing with itself
-                    if val.partial_cmp(&val).is_none() {
-                        return Err(ExtremaError::UndefinedOrder);
-                    }
-
-                    match max_val {
-                        None => max_val = Some(val),
-                        Some(current_max) => match val.partial_cmp(&current_max) {
-                            Some(std::cmp::Ordering::Greater) => max_val = Some(val),
-                            Some(_) => {}
-                            None => return Err(ExtremaError::UndefinedOrder),
-                        },
-                    }
+            let first = self.index_axis(axis, 0);
+            for &val in first.iter() {
+                if val.partial_cmp(&val).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
                 }
-                Ok(max_val.unwrap()) // Safe because subview is guaranteed non-empty
-            });
+            }
+            let mut result = first.to_owned();
 
-            // Check if any subview computation failed
-            for elem in &mut result {
-                if let Err(err) = elem {
-                    return Err(*err);
+            for i in 1..self.len_of(axis) {
+                let lane = self.index_axis(axis, i);
+                for (r, &v) in result.iter_mut().zip(lane.iter()) {
+                    match v.partial_cmp(r) {
+                        Some(std::cmp::Ordering::Greater) => *r = v,
+                        Some(_) => {}
+                        None => return Err(ExtremaError::UndefinedOrder),
+                    }
                 }
             }
 
-            // Convert Result<T, ExtremaError> elements to T
-            let final_result = result.map(|res| res.unwrap());
-            Ok(final_result)
+            Ok(result)
         }
 
         #[inline]
@@ -332,94 +289,70 @@ pub mod arrays {
                 return Err(ExtremaError::EmptyArray);
             }
 
-            let mut result = self.map_axis(axis, |subview| -> Result<T, ExtremaError> {
-                let mut min_val = None;
-                for &val in subview {
-                    // Check for NaN or incomparable values by comparing with itself
-                    if val.partial_cmp(&val).is_none() {
-                        return Err(ExtremaError::UndefinedOrder);
-                    }
-
-                    match min_val {
-                        None => min_val = Some(val),
-                        Some(current_min) => match val.partial_cmp(&current_min) {
-                            Some(std::cmp::Ordering::Less) => min_val = Some(val),
-                            Some(_) => {}
-                            None => return Err(ExtremaError::UndefinedOrder),
-                        },
-                    }
+            let first = self.index_axis(axis, 0);
+            for &val in first.iter() {
+                if val.partial_cmp(&val).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
                 }
-                Ok(min_val.unwrap()) // Safe because subview is guaranteed non-empty
-            });
+            }
+            let mut result = first.to_owned();
 
-            // Check if any subview computation failed
-            for elem in &mut result {
-                if let Err(err) = elem {
-                    return Err(*err);
+            for i in 1..self.len_of(axis) {
+                let lane = self.index_axis(axis, i);
+                for (r, &v) in result.iter_mut().zip(lane.iter()) {
+                    match v.partial_cmp(r) {
+                        Some(std::cmp::Ordering::Less) => *r = v,
+                        Some(_) => {}
+                        None => return Err(ExtremaError::UndefinedOrder),
+                    }
                 }
             }
 
-            // Convert Result<T, ExtremaError> elements to T
-            let final_result = result.map(|res| res.unwrap());
-            Ok(final_result)
+            Ok(result)
         }
 
         #[inline]
         fn argmax(&self) -> Result<D::Pattern, ExtremaError> {
-            if self.is_empty() {
-                return Err(ExtremaError::EmptyArray);
+            let mut iter = self.indexed_iter();
+            let (first_idx, &first_val) = iter.next().ok_or(ExtremaError::EmptyArray)?;
+            if first_val.partial_cmp(&first_val).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
             }
-
-            let mut best = None;
-
-            for (idx, &val) in self.indexed_iter() {
-                // Check for NaN or incomparable values by comparing with itself
-                if val.partial_cmp(&val).is_none() {
-                    return Err(ExtremaError::UndefinedOrder);
-                }
-
-                match best {
-                    None => best = Some((idx, val)),
-                    Some((_, best_val)) => {
-                        match val.partial_cmp(&best_val) {
-                            Some(std::cmp::Ordering::Greater) => best = Some((idx, val)),
-                            Some(_) => {} // val <= best_val, keep current best
-                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
-                        }
+            let mut best_idx = first_idx;
+            let mut best_val = first_val;
+            for (idx, &val) in iter {
+                match val.partial_cmp(&best_val) {
+                    Some(std::cmp::Ordering::Greater) => {
+                        best_idx = idx;
+                        best_val = val;
                     }
+                    Some(_) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
                 }
             }
-
-            Ok(best.unwrap().0) // Safe because we checked for empty array above
+            Ok(best_idx)
         }
 
         #[inline]
         fn argmin(&self) -> Result<D::Pattern, ExtremaError> {
-            if self.is_empty() {
-                return Err(ExtremaError::EmptyArray);
+            let mut iter = self.indexed_iter();
+            let (first_idx, &first_val) = iter.next().ok_or(ExtremaError::EmptyArray)?;
+            if first_val.partial_cmp(&first_val).is_none() {
+                return Err(ExtremaError::UndefinedOrder);
             }
-
-            let mut best = None;
-
-            for (idx, &val) in self.indexed_iter() {
-                // Check for NaN or incomparable values by comparing with itself
-                if val.partial_cmp(&val).is_none() {
-                    return Err(ExtremaError::UndefinedOrder);
-                }
-
-                match best {
-                    None => best = Some((idx, val)),
-                    Some((_, best_val)) => {
-                        match val.partial_cmp(&best_val) {
-                            Some(std::cmp::Ordering::Less) => best = Some((idx, val)),
-                            Some(_) => {} // val >= best_val, keep current best
-                            None => return Err(ExtremaError::UndefinedOrder), // NaN or incomparable values
-                        }
+            let mut best_idx = first_idx;
+            let mut best_val = first_val;
+            for (idx, &val) in iter {
+                match val.partial_cmp(&best_val) {
+                    Some(std::cmp::Ordering::Less) => {
+                        best_idx = idx;
+                        best_val = val;
                     }
+                    Some(_) => {}
+                    None => return Err(ExtremaError::UndefinedOrder),
                 }
             }
-
-            Ok(best.unwrap().0) // Safe because we checked for empty array above
+            Ok(best_idx)
         }
 
         #[inline]
@@ -431,38 +364,30 @@ pub mod arrays {
                 return Err(ExtremaError::EmptyArray);
             }
 
-            let mut result = self.map_axis(axis, |subview| -> Result<usize, ExtremaError> {
-                let mut best = None;
-
-                for (idx, &val) in subview.indexed_iter() {
-                    // Check for NaN or incomparable values by comparing with itself
-                    if val.partial_cmp(&val).is_none() {
-                        return Err(ExtremaError::UndefinedOrder);
-                    }
-
-                    match best {
-                        None => best = Some((idx, val)),
-                        Some((_, best_val)) => match val.partial_cmp(&best_val) {
-                            Some(std::cmp::Ordering::Greater) => best = Some((idx, val)),
-                            Some(_) => {}
-                            None => return Err(ExtremaError::UndefinedOrder),
-                        },
-                    }
+            let first = self.index_axis(axis, 0);
+            for &val in first.iter() {
+                if val.partial_cmp(&val).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
                 }
+            }
+            let mut best_vals = first.to_owned();
+            let mut best_idxs = first.map(|_| 0usize);
 
-                Ok(best.unwrap().0) // Safe because subview is guaranteed non-empty
-            });
-
-            // Check if any subview computation failed
-            for elem in &mut result {
-                if let Err(err) = elem {
-                    return Err(*err);
+            for i in 1..self.len_of(axis) {
+                let lane = self.index_axis(axis, i);
+                for ((bv, bi), &v) in best_vals.iter_mut().zip(best_idxs.iter_mut()).zip(lane.iter()) {
+                    match v.partial_cmp(bv) {
+                        Some(std::cmp::Ordering::Greater) => {
+                            *bv = v;
+                            *bi = i;
+                        }
+                        Some(_) => {}
+                        None => return Err(ExtremaError::UndefinedOrder),
+                    }
                 }
             }
 
-            // Convert Result<usize, ExtremaError> elements to usize
-            let final_result = result.map(|res| res.unwrap());
-            Ok(final_result)
+            Ok(best_idxs)
         }
 
         #[inline]
@@ -474,38 +399,30 @@ pub mod arrays {
                 return Err(ExtremaError::EmptyArray);
             }
 
-            let mut result = self.map_axis(axis, |subview| -> Result<usize, ExtremaError> {
-                let mut best = None;
-
-                for (idx, &val) in subview.indexed_iter() {
-                    // Check for NaN or incomparable values by comparing with itself
-                    if val.partial_cmp(&val).is_none() {
-                        return Err(ExtremaError::UndefinedOrder);
-                    }
-
-                    match best {
-                        None => best = Some((idx, val)),
-                        Some((_, best_val)) => match val.partial_cmp(&best_val) {
-                            Some(std::cmp::Ordering::Less) => best = Some((idx, val)),
-                            Some(_) => {}
-                            None => return Err(ExtremaError::UndefinedOrder),
-                        },
-                    }
+            let first = self.index_axis(axis, 0);
+            for &val in first.iter() {
+                if val.partial_cmp(&val).is_none() {
+                    return Err(ExtremaError::UndefinedOrder);
                 }
+            }
+            let mut best_vals = first.to_owned();
+            let mut best_idxs = first.map(|_| 0usize);
 
-                Ok(best.unwrap().0) // Safe because subview is guaranteed non-empty
-            });
-
-            // Check if any subview computation failed
-            for elem in &mut result {
-                if let Err(err) = elem {
-                    return Err(*err);
+            for i in 1..self.len_of(axis) {
+                let lane = self.index_axis(axis, i);
+                for ((bv, bi), &v) in best_vals.iter_mut().zip(best_idxs.iter_mut()).zip(lane.iter()) {
+                    match v.partial_cmp(bv) {
+                        Some(std::cmp::Ordering::Less) => {
+                            *bv = v;
+                            *bi = i;
+                        }
+                        Some(_) => {}
+                        None => return Err(ExtremaError::UndefinedOrder),
+                    }
                 }
             }
 
-            // Convert Result<usize, ExtremaError> elements to usize
-            let final_result = result.map(|res| res.unwrap());
-            Ok(final_result)
+            Ok(best_idxs)
         }
     }
 
@@ -768,13 +685,17 @@ pub mod arrays {
         #[inline]
         fn trapezoid(&self, x: &RVector) -> f64 {
             assert_eq!(self.len(), x.len(), "Arrays must have the same length");
-
-            let y0 = self.slice(s![..-1]);
-            let y1 = self.slice(s![1..]);
-            let x0 = x.slice(s![..-1]);
-            let x1 = x.slice(s![1..]);
-
-            ((&y0 + &y1) / 2.0 * (&x1 - &x0)).sum()
+            let n = self.len();
+            if n < 2 {
+                return 0.0;
+            }
+            let ys = self.as_slice().expect("y array must be contiguous");
+            let xs = x.as_slice().expect("x array must be contiguous");
+            let mut sum = 0.0;
+            for i in 0..n - 1 {
+                sum += (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i]);
+            }
+            sum * 0.5
         }
     }
 
@@ -1228,6 +1149,561 @@ pub mod arrays {
                 a.is_monotonically_increasing(),
                 Err(ExtremaError::UndefinedOrder)
             ));
+        }
+
+        // ── minmax ──────────────────────────────────────────────────────
+
+        #[test]
+        fn test_minmax_basic() {
+            let a = array![3.0, 1.0, 4.0, 1.5, 9.2, 2.6];
+            assert_eq!(a.minmax(), Ok((1.0, 9.2)));
+        }
+
+        #[test]
+        fn test_minmax_empty() {
+            let a: Array1<f64> = Array1::from_vec(vec![]);
+            assert_eq!(a.minmax(), Err(ExtremaError::EmptyArray));
+        }
+
+        #[test]
+        fn test_minmax_single_element() {
+            let a = array![42.0];
+            assert_eq!(a.minmax(), Ok((42.0, 42.0)));
+        }
+
+        #[test]
+        fn test_minmax_with_nan() {
+            let a = array![1.0, f64::NAN, 3.0];
+            assert_eq!(a.minmax(), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_minmax_nan_first() {
+            let a = array![f64::NAN, 1.0, 2.0];
+            assert_eq!(a.minmax(), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_minmax_identical_elements() {
+            let a = array![5.0, 5.0, 5.0, 5.0];
+            assert_eq!(a.minmax(), Ok((5.0, 5.0)));
+        }
+
+        #[test]
+        fn test_minmax_two_elements() {
+            let a = array![10.0, 3.0];
+            assert_eq!(a.minmax(), Ok((3.0, 10.0)));
+        }
+
+        #[test]
+        fn test_minmax_negative_values() {
+            let a = array![-5.0, -1.0, -10.0, -3.0];
+            assert_eq!(a.minmax(), Ok((-10.0, -1.0)));
+        }
+
+        #[test]
+        fn test_minmax_integers() {
+            let a = array![3, 1, 4, 1, 5, 9, 2, 6];
+            assert_eq!(a.minmax(), Ok((1, 9)));
+        }
+
+        // ── Extrema: all-identical, all-negative, large arrays ─────────
+
+        #[test]
+        fn test_maxval_minval_identical() {
+            let a = array![7.0, 7.0, 7.0];
+            assert_eq!(a.maxval(), Ok(7.0));
+            assert_eq!(a.minval(), Ok(7.0));
+        }
+
+        #[test]
+        fn test_maxval_minval_all_negative() {
+            let a = array![-3.0, -1.0, -7.0, -2.0];
+            assert_eq!(a.maxval(), Ok(-1.0));
+            assert_eq!(a.minval(), Ok(-7.0));
+        }
+
+        #[test]
+        fn test_maxval_minval_two_elements() {
+            let a = array![2.0, 8.0];
+            assert_eq!(a.maxval(), Ok(8.0));
+            assert_eq!(a.minval(), Ok(2.0));
+        }
+
+        #[test]
+        fn test_maxval_nan_at_end() {
+            let a = array![1.0, 2.0, f64::NAN];
+            assert_eq!(a.maxval(), Err(ExtremaError::UndefinedOrder));
+            assert_eq!(a.minval(), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_maxval_nan_as_first() {
+            let a = array![f64::NAN, 1.0, 2.0];
+            assert_eq!(a.maxval(), Err(ExtremaError::UndefinedOrder));
+            assert_eq!(a.minval(), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_argmax_argmin_single() {
+            let a = array![99.0];
+            assert_eq!(a.argmax(), Ok(0));
+            assert_eq!(a.argmin(), Ok(0));
+        }
+
+        #[test]
+        fn test_argmax_argmin_empty() {
+            let a: Array1<f64> = Array1::from_vec(vec![]);
+            assert_eq!(a.argmax(), Err(ExtremaError::EmptyArray));
+            assert_eq!(a.argmin(), Err(ExtremaError::EmptyArray));
+        }
+
+        #[test]
+        fn test_argmax_returns_first_occurrence() {
+            let a = array![1.0, 5.0, 5.0, 3.0];
+            assert_eq!(a.argmax(), Ok(1)); // first 5.0
+        }
+
+        #[test]
+        fn test_argmin_returns_first_occurrence() {
+            let a = array![3.0, 1.0, 1.0, 5.0];
+            assert_eq!(a.argmin(), Ok(1)); // first 1.0
+        }
+
+        #[test]
+        fn test_argmax_argmin_2d() {
+            let a = array![[10, 20], [30, 5]];
+            assert_eq!(a.argmax(), Ok((1, 0))); // 30 at (1,0)
+            assert_eq!(a.argmin(), Ok((1, 1))); // 5 at (1,1)
+        }
+
+        // ── along: single-row/col, NaN in specific lanes ───────────────
+
+        #[test]
+        fn test_maxval_along_single_row() {
+            let a = array![[3.0, 1.0, 4.0]];
+            assert_eq!(a.maxval_along(Axis(0)).unwrap(), array![3.0, 1.0, 4.0]);
+            assert_eq!(a.maxval_along(Axis(1)).unwrap(), array![4.0]);
+        }
+
+        #[test]
+        fn test_minval_along_single_row() {
+            let a = array![[3.0, 1.0, 4.0]];
+            assert_eq!(a.minval_along(Axis(0)).unwrap(), array![3.0, 1.0, 4.0]);
+            assert_eq!(a.minval_along(Axis(1)).unwrap(), array![1.0]);
+        }
+
+        #[test]
+        fn test_argmax_along_single_row() {
+            let a = array![[3.0, 1.0, 4.0]];
+            assert_eq!(a.argmax_along(Axis(0)).unwrap(), array![0, 0, 0]);
+            assert_eq!(a.argmax_along(Axis(1)).unwrap(), array![2]);
+        }
+
+        #[test]
+        fn test_argmin_along_single_row() {
+            let a = array![[3.0, 1.0, 4.0]];
+            assert_eq!(a.argmin_along(Axis(0)).unwrap(), array![0, 0, 0]);
+            assert_eq!(a.argmin_along(Axis(1)).unwrap(), array![1]);
+        }
+
+        #[test]
+        fn test_argmax_along_nan_in_later_lane() {
+            // NaN appears in the second row, so it's encountered during lane iteration
+            let a = array![[1.0, 2.0], [f64::NAN, 4.0]];
+            assert_eq!(a.argmax_along(Axis(0)), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_argmin_along_nan_in_first_lane() {
+            // NaN in the first row triggers error during first-lane NaN check
+            let a = array![[f64::NAN, 2.0], [3.0, 4.0]];
+            assert_eq!(a.argmin_along(Axis(0)), Err(ExtremaError::UndefinedOrder));
+        }
+
+        #[test]
+        fn test_along_methods_with_integers() {
+            let a = array![[10, 20, 30], [40, 5, 60]];
+            assert_eq!(a.maxval_along(Axis(0)).unwrap(), array![40, 20, 60]);
+            assert_eq!(a.minval_along(Axis(0)).unwrap(), array![10, 5, 30]);
+            assert_eq!(a.argmax_along(Axis(0)).unwrap(), array![1, 0, 1]);
+            assert_eq!(a.argmin_along(Axis(0)).unwrap(), array![0, 1, 0]);
+        }
+
+        // ── trapezoid ──────────────────────────────────────────────────
+
+        #[test]
+        fn test_trapezoid_basic() {
+            // Integrate y=x from 0 to 2: exact answer = 2.0
+            let x = array![0.0, 1.0, 2.0];
+            let y = array![0.0, 1.0, 2.0];
+            let result = y.trapezoid(&x);
+            assert!((result - 2.0).abs() < 1e-12);
+        }
+
+        #[test]
+        fn test_trapezoid_constant_function() {
+            // Integrate y=3 from 0 to 4: exact answer = 12.0
+            let x = array![0.0, 1.0, 2.0, 3.0, 4.0];
+            let y = array![3.0, 3.0, 3.0, 3.0, 3.0];
+            let result = y.trapezoid(&x);
+            assert!((result - 12.0).abs() < 1e-12);
+        }
+
+        #[test]
+        fn test_trapezoid_two_points() {
+            // Single trapezoid: (1+3)/2 * (2-0) = 4.0
+            let x = array![0.0, 2.0];
+            let y = array![1.0, 3.0];
+            let result = y.trapezoid(&x);
+            assert!((result - 4.0).abs() < 1e-12);
+        }
+
+        #[test]
+        fn test_trapezoid_single_point() {
+            // Cannot integrate with fewer than 2 points
+            let x = array![1.0];
+            let y = array![5.0];
+            let result = y.trapezoid(&x);
+            assert_eq!(result, 0.0);
+        }
+
+        #[test]
+        fn test_trapezoid_non_uniform_spacing() {
+            // x = [0, 1, 4], y = [0, 1, 4] (y = x)
+            // Panel 1: (0+1)/2 * (1-0) = 0.5
+            // Panel 2: (1+4)/2 * (4-1) = 7.5
+            // Total: 8.0; exact integral of x from 0..4 = 8.0
+            let x = array![0.0, 1.0, 4.0];
+            let y = array![0.0, 1.0, 4.0];
+            let result = y.trapezoid(&x);
+            assert!((result - 8.0).abs() < 1e-12);
+        }
+
+        #[test]
+        fn test_trapezoid_negative_values() {
+            // y = [-1, -2] over x = [0, 1]: (-1 + -2)/2 * 1 = -1.5
+            let x = array![0.0, 1.0];
+            let y = array![-1.0, -2.0];
+            let result = y.trapezoid(&x);
+            assert!((result - (-1.5)).abs() < 1e-12);
+        }
+
+        #[test]
+        #[should_panic(expected = "Arrays must have the same length")]
+        fn test_trapezoid_mismatched_lengths() {
+            let x = array![0.0, 1.0, 2.0];
+            let y = array![1.0, 2.0];
+            y.trapezoid(&x);
+        }
+
+        // ── as_real_slice ──────────────────────────────────────────────
+
+        #[test]
+        fn test_as_real_slice() {
+            let a = array![1.0, 2.0, 3.0];
+            let slice = a.as_real_slice();
+            assert_eq!(slice, &[1.0, 2.0, 3.0]);
+        }
+
+        #[test]
+        fn test_as_real_slice_single() {
+            let a = array![42.0];
+            assert_eq!(a.as_real_slice(), &[42.0]);
+        }
+
+        // ── find_index_le / find_index_ge ──────────────────────────────
+
+        #[test]
+        fn test_find_index_le_exact_match() {
+            let arr = [1.0, 2.0, 3.0, 4.0];
+            assert_eq!(find_index_le(2.0, &arr), Some(1));
+        }
+
+        #[test]
+        fn test_find_index_le_between() {
+            let arr = [1.0, 3.0, 5.0, 7.0];
+            assert_eq!(find_index_le(4.0, &arr), Some(1)); // 3.0 <= 4.0 < 5.0
+        }
+
+        #[test]
+        fn test_find_index_le_empty() {
+            let arr: [f64; 0] = [];
+            assert_eq!(find_index_le(1.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_le_below_min() {
+            let arr = [2.0, 3.0, 4.0];
+            assert_eq!(find_index_le(1.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_le_at_last() {
+            let arr = [1.0, 2.0, 3.0];
+            // val >= last element returns None
+            assert_eq!(find_index_le(3.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_le_above_last() {
+            let arr = [1.0, 2.0, 3.0];
+            assert_eq!(find_index_le(10.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_ge_exact_match() {
+            let arr = [1.0, 2.0, 3.0, 4.0];
+            assert_eq!(find_index_ge(2.0, &arr), Some(1));
+        }
+
+        #[test]
+        fn test_find_index_ge_between() {
+            let arr = [1.0, 3.0, 5.0, 7.0];
+            assert_eq!(find_index_ge(4.0, &arr), Some(2)); // 5.0 >= 4.0
+        }
+
+        #[test]
+        fn test_find_index_ge_empty() {
+            let arr: [f64; 0] = [];
+            assert_eq!(find_index_ge(1.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_ge_above_max() {
+            let arr = [1.0, 2.0, 3.0];
+            assert_eq!(find_index_ge(10.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_ge_at_first() {
+            let arr = [1.0, 2.0, 3.0];
+            // val <= first element returns None
+            assert_eq!(find_index_ge(1.0, &arr), None);
+        }
+
+        #[test]
+        fn test_find_index_ge_below_first() {
+            let arr = [1.0, 2.0, 3.0];
+            assert_eq!(find_index_ge(0.5, &arr), None);
+        }
+
+        // ── lower_bound_index / upper_bound_index ──────────────────────
+
+        #[test]
+        fn test_lower_bound_index_middle() {
+            let arr = [1.0, 3.0, 5.0, 7.0];
+            assert_eq!(lower_bound_index(4.0, &arr), 2);
+        }
+
+        #[test]
+        fn test_lower_bound_index_below() {
+            let arr = [1.0, 3.0, 5.0];
+            assert_eq!(lower_bound_index(0.0, &arr), 0);
+        }
+
+        #[test]
+        fn test_lower_bound_index_above() {
+            let arr = [1.0, 3.0, 5.0];
+            assert_eq!(lower_bound_index(10.0, &arr), 3);
+        }
+
+        #[test]
+        fn test_lower_bound_index_empty() {
+            let arr: [f64; 0] = [];
+            assert_eq!(lower_bound_index(1.0, &arr), 0);
+        }
+
+        #[test]
+        fn test_lower_bound_index_exact_match() {
+            let arr = [1.0, 3.0, 5.0, 7.0];
+            // exact match at interior: partition_point finds first x >= 3.0
+            assert_eq!(lower_bound_index(3.0, &arr), 1);
+        }
+
+        #[test]
+        fn test_upper_bound_index_middle() {
+            let arr = [1.0, 3.0, 5.0, 7.0];
+            assert_eq!(upper_bound_index(4.0, &arr), 1); // 3.0 <= 4.0
+        }
+
+        #[test]
+        fn test_upper_bound_index_below() {
+            let arr = [1.0, 3.0, 5.0];
+            assert_eq!(upper_bound_index(0.0, &arr), 0); // clamped
+        }
+
+        #[test]
+        fn test_upper_bound_index_above() {
+            let arr = [1.0, 3.0, 5.0];
+            assert_eq!(upper_bound_index(10.0, &arr), 2); // clamped to last
+        }
+
+        #[test]
+        fn test_upper_bound_index_empty() {
+            let arr: [f64; 0] = [];
+            assert_eq!(upper_bound_index(1.0, &arr), 0);
+        }
+
+        #[test]
+        fn test_upper_bound_index_exact_match() {
+            let arr = [1.0, 3.0, 5.0, 7.0];
+            assert_eq!(upper_bound_index(3.0, &arr), 1);
+        }
+
+        // ── Monotonicity: more edge cases ──────────────────────────────
+
+        #[test]
+        fn test_single_element_monotonicity() {
+            let a = array![42.0];
+            assert!(a.is_monotonically_increasing().unwrap());
+            assert!(a.is_monotonically_decreasing().unwrap());
+            assert!(a.is_strictly_increasing().unwrap());
+            assert!(a.is_strictly_decreasing().unwrap());
+            assert!(a.is_monotonic().unwrap());
+            assert!(a.is_strictly_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_constant_array_monotonicity() {
+            let a = array![3.0, 3.0, 3.0];
+            assert!(a.is_monotonically_increasing().unwrap());
+            assert!(a.is_monotonically_decreasing().unwrap());
+            assert!(!a.is_strictly_increasing().unwrap());
+            assert!(!a.is_strictly_decreasing().unwrap());
+            assert!(a.is_monotonic().unwrap());
+            assert!(!a.is_strictly_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_monotonic_true_increasing() {
+            let a = array![1.0, 2.0, 3.0];
+            assert!(a.is_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_monotonic_true_decreasing() {
+            let a = array![3.0, 2.0, 1.0];
+            assert!(a.is_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_monotonic_false() {
+            let a = array![1.0, 3.0, 2.0];
+            assert!(!a.is_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_monotonic_empty() {
+            let a = Array1::<f64>::zeros(0);
+            assert!(matches!(a.is_monotonic(), Err(ExtremaError::EmptyArray)));
+        }
+
+        #[test]
+        fn test_is_monotonic_with_nan() {
+            let a = array![1.0, f64::NAN, 3.0];
+            assert!(matches!(
+                a.is_monotonic(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+        }
+
+        #[test]
+        fn test_is_strictly_monotonic_increasing() {
+            let a = array![1.0, 2.0, 3.0];
+            assert!(a.is_strictly_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_strictly_monotonic_decreasing() {
+            let a = array![3.0, 2.0, 1.0];
+            assert!(a.is_strictly_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_strictly_monotonic_false_due_to_equal() {
+            let a = array![1.0, 2.0, 2.0, 3.0];
+            assert!(!a.is_strictly_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_strictly_monotonic_false_due_to_reversal() {
+            let a = array![1.0, 3.0, 2.0];
+            assert!(!a.is_strictly_monotonic().unwrap());
+        }
+
+        #[test]
+        fn test_is_strictly_monotonic_empty() {
+            let a = Array1::<f64>::zeros(0);
+            assert!(matches!(
+                a.is_strictly_monotonic(),
+                Err(ExtremaError::EmptyArray)
+            ));
+        }
+
+        #[test]
+        fn test_is_strictly_monotonic_with_nan() {
+            let a = array![1.0, f64::NAN, 3.0];
+            assert!(matches!(
+                a.is_strictly_monotonic(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+        }
+
+        #[test]
+        fn test_nan_at_end_monotonicity() {
+            let a = array![1.0, 2.0, f64::NAN];
+            assert!(matches!(
+                a.is_monotonically_increasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+            // is_monotonically_decreasing early-exits at (1.0, 2.0) with Ok(false)
+            // before reaching NaN — this is correct short-circuit behavior.
+            assert_eq!(a.is_monotonically_decreasing(), Ok(false));
+            assert!(matches!(
+                a.is_strictly_increasing(),
+                Err(ExtremaError::UndefinedOrder)
+            ));
+            // Same early-exit as is_monotonically_decreasing.
+            assert_eq!(a.is_strictly_decreasing(), Ok(false));
+        }
+
+        #[test]
+        fn test_two_element_monotonicity() {
+            let inc = array![1.0, 2.0];
+            assert!(inc.is_strictly_increasing().unwrap());
+            assert!(inc.is_monotonically_increasing().unwrap());
+            assert!(!inc.is_strictly_decreasing().unwrap());
+            assert!(!inc.is_monotonically_decreasing().unwrap());
+
+            let dec = array![2.0, 1.0];
+            assert!(dec.is_strictly_decreasing().unwrap());
+            assert!(!dec.is_strictly_increasing().unwrap());
+
+            let eq = array![1.0, 1.0];
+            assert!(!eq.is_strictly_increasing().unwrap());
+            assert!(!eq.is_strictly_decreasing().unwrap());
+            assert!(eq.is_monotonically_increasing().unwrap());
+            assert!(eq.is_monotonically_decreasing().unwrap());
+        }
+
+        // ── Special float values ───────────────────────────────────────
+
+        #[test]
+        fn test_extrema_with_infinity() {
+            let a = array![1.0, f64::INFINITY, -f64::INFINITY, 0.0];
+            assert_eq!(a.maxval(), Ok(f64::INFINITY));
+            assert_eq!(a.minval(), Ok(f64::NEG_INFINITY));
+            assert_eq!(a.minmax(), Ok((f64::NEG_INFINITY, f64::INFINITY)));
+            assert_eq!(a.argmax(), Ok(1));
+            assert_eq!(a.argmin(), Ok(2));
+        }
+
+        #[test]
+        fn test_monotonicity_with_infinity() {
+            let a = array![-f64::INFINITY, 0.0, f64::INFINITY];
+            assert!(a.is_strictly_increasing().unwrap());
+            assert!(a.is_monotonically_increasing().unwrap());
         }
     }
 }
