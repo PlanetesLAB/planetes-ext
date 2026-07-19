@@ -7,10 +7,10 @@ license = "MIT"
 repository = "https://github.com/PlanetesLAB/planetes-ext"
 
 [dependencies]
-ndarray = "0.17.1"
-num-complex = { version = "0.4", optional = true }
+ndarray = "0.17.2"
+num-complex = { version = "0.4.6", optional = true }
 num-traits = "0.2.19"
-serde = { version = "1.0.228", features = ["derive"], optional = true }
+serde = { version = "1.0.229", features = ["derive"], optional = true }
 
 [features]
 default = []
