@@ -1,6 +1,6 @@
 [package]
 name = "planetes-ext"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2024"
 description = "Useful extensions for types, arrays and other helper functions for PlanetesLAB projects."
 license = "MIT"
