@@ -1,3 +1,7 @@
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/PlanetesLAB/documentation/refs/heads/main/logo.jpg"
+)]
+
 pub mod io {
     use std::fs::File;
     use std::io::BufRead;
