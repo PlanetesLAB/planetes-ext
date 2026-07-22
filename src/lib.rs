@@ -259,7 +259,7 @@ pub mod arrays {
             }
 
             let first = self.index_axis(axis, 0);
-            for &val in first.iter() {
+            for &val in &first {
                 if val.partial_cmp(&val).is_none() {
                     return Err(ExtremaError::UndefinedOrder);
                 }
@@ -290,7 +290,7 @@ pub mod arrays {
             }
 
             let first = self.index_axis(axis, 0);
-            for &val in first.iter() {
+            for &val in &first {
                 if val.partial_cmp(&val).is_none() {
                     return Err(ExtremaError::UndefinedOrder);
                 }
@@ -365,7 +365,7 @@ pub mod arrays {
             }
 
             let first = self.index_axis(axis, 0);
-            for &val in first.iter() {
+            for &val in &first {
                 if val.partial_cmp(&val).is_none() {
                     return Err(ExtremaError::UndefinedOrder);
                 }
@@ -375,7 +375,11 @@ pub mod arrays {
 
             for i in 1..self.len_of(axis) {
                 let lane = self.index_axis(axis, i);
-                for ((bv, bi), &v) in best_vals.iter_mut().zip(best_idxs.iter_mut()).zip(lane.iter()) {
+                for ((bv, bi), &v) in best_vals
+                    .iter_mut()
+                    .zip(best_idxs.iter_mut())
+                    .zip(lane.iter())
+                {
                     match v.partial_cmp(bv) {
                         Some(std::cmp::Ordering::Greater) => {
                             *bv = v;
@@ -400,7 +404,7 @@ pub mod arrays {
             }
 
             let first = self.index_axis(axis, 0);
-            for &val in first.iter() {
+            for &val in &first {
                 if val.partial_cmp(&val).is_none() {
                     return Err(ExtremaError::UndefinedOrder);
                 }
@@ -410,7 +414,11 @@ pub mod arrays {
 
             for i in 1..self.len_of(axis) {
                 let lane = self.index_axis(axis, i);
-                for ((bv, bi), &v) in best_vals.iter_mut().zip(best_idxs.iter_mut()).zip(lane.iter()) {
+                for ((bv, bi), &v) in best_vals
+                    .iter_mut()
+                    .zip(best_idxs.iter_mut())
+                    .zip(lane.iter())
+                {
                     match v.partial_cmp(bv) {
                         Some(std::cmp::Ordering::Less) => {
                             *bv = v;
@@ -1360,6 +1368,7 @@ pub mod arrays {
         }
 
         #[test]
+        #[allow(clippy::float_cmp)]
         fn test_trapezoid_single_point() {
             // Cannot integrate with fewer than 2 points
             let x = array![1.0];
