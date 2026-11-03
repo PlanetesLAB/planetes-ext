@@ -83,9 +83,7 @@ pub fn linear_with(x: f64, xp: &[f64], yp: &[f64], extrapolate: Extrapolate) -> 
     if x <= xp[0] {
         return match extrapolate {
             Extrapolate::Clamp => yp[0],
-            Extrapolate::Linear => {
-                yp[0] + (yp[1] - yp[0]) * (x - xp[0]) / (xp[1] - xp[0])
-            }
+            Extrapolate::Linear => yp[0] + (yp[1] - yp[0]) * (x - xp[0]) / (xp[1] - xp[0]),
         };
     }
 
@@ -370,12 +368,229 @@ impl CubicSpline {
     }
 }
 
+/// How to extrapolate values outside the original grid during remapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtrapolationMode {
+    /// Out-of-bounds input is an error.
+    Strict,
+    /// Return the boundary value.
+    Constant,
+    /// Extrapolate with a log-log power law through the two boundary samples.
+    PowerLaw,
+    /// Return zero.
+    Zero,
+    /// Taper linearly to zero over one cell beyond the boundary.
+    LinearDrop,
+}
+
+/// Error returned when remapping fails.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RemapError {
+    /// `x` fell outside the grid and the relevant bound is `Strict`.
+    OutOfBounds(f64),
+    /// The values and the grid have different lengths.
+    MismatchedLength,
+    /// The original grid is empty.
+    EmptyGrid,
+}
+
+impl std::fmt::Display for RemapError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemapError::OutOfBounds(x) => write!(f, "x = {x} is out of bounds of the grid"),
+            RemapError::MismatchedLength => write!(f, "values and grid have different lengths"),
+            RemapError::EmptyGrid => write!(f, "grid is empty"),
+        }
+    }
+}
+
+impl std::error::Error for RemapError {}
+
+/// Builder that remaps values onto a new grid.
+///
+/// Constructed via [`Remap::remap_from`]; configure the out-of-bounds behavior
+/// with [`with_lower_bound`](RemapBuilder::with_lower_bound) and
+/// [`with_upper_bound`](RemapBuilder::with_upper_bound), then finish with
+/// [`onto_grid`](RemapBuilder::onto_grid).
+#[must_use]
+pub struct RemapBuilder<'a> {
+    grid: &'a [f64],
+    values: &'a [f64],
+    lower: ExtrapolationMode,
+    upper: ExtrapolationMode,
+}
+
+impl<'a> RemapBuilder<'a> {
+    fn new(grid: &'a [f64], values: &'a [f64]) -> Self {
+        Self {
+            grid,
+            values,
+            lower: ExtrapolationMode::Strict,
+            upper: ExtrapolationMode::Strict,
+        }
+    }
+
+    /// Sets the behavior when `x_new` is below the lowest grid value.
+    pub const fn with_lower_bound(mut self, mode: ExtrapolationMode) -> Self {
+        self.lower = mode;
+        self
+    }
+
+    /// Sets the behavior when `x_new` is above the highest grid value.
+    pub const fn with_upper_bound(mut self, mode: ExtrapolationMode) -> Self {
+        self.upper = mode;
+        self
+    }
+
+    /// Remaps the values onto `x_new`, returning one value per entry.
+    ///
+    /// # Errors
+    /// Returns an error if the values and grid differ in length, if the grid is
+    /// empty, or if a point falls outside the grid and the relevant bound is
+    /// [`ExtrapolationMode::Strict`].
+    pub fn onto_grid(self, x_new: &[f64]) -> Result<Vec<f64>, RemapError> {
+        if self.values.len() != self.grid.len() {
+            return Err(RemapError::MismatchedLength);
+        }
+        let n = self.grid.len();
+        if n == 0 {
+            return Err(RemapError::EmptyGrid);
+        }
+        let grid = self.grid;
+        let values = self.values;
+
+        let mut out = Vec::with_capacity(x_new.len());
+
+        if n == 1 {
+            let (x0, f0) = (grid[0], values[0]);
+            for &x in x_new {
+                if x < x0 {
+                    out.push(Self::extrapolate(self.lower, x, x0, f0, None)?);
+                } else if x > x0 {
+                    out.push(Self::extrapolate(self.upper, x, x0, f0, None)?);
+                } else {
+                    out.push(f0);
+                }
+            }
+            return Ok(out);
+        }
+
+        let x_lo = grid[0];
+        let x_hi = grid[n - 1];
+        let f_lo = values[0];
+        let f_hi = values[n - 1];
+        let low_neighbor = Some((grid[1], values[1]));
+        let high_neighbor = Some((grid[n - 2], values[n - 2]));
+
+        for &x in x_new {
+            if x < x_lo {
+                out.push(Self::extrapolate(self.lower, x, x_lo, f_lo, low_neighbor)?);
+                continue;
+            }
+            if x > x_hi {
+                out.push(Self::extrapolate(self.upper, x, x_hi, f_hi, high_neighbor)?);
+                continue;
+            }
+
+            let i = cell_index(x, grid);
+            let x0 = grid[i];
+            let x1 = grid[i + 1];
+            let f0 = values[i];
+            let f1 = values[i + 1];
+            let eps = (x - x0) / (x1 - x0);
+            out.push(Self::interp_pair(eps, f0, f1));
+        }
+
+        Ok(out)
+    }
+
+    /// Log-space linear interpolation, falling back to linear when either
+    /// endpoint is non-positive.
+    #[inline]
+    fn interp_pair(eps: f64, f0: f64, f1: f64) -> f64 {
+        if f0 > 0.0 && f1 > 0.0 {
+            ((1.0 - eps) * f0.ln() + eps * f1.ln()).exp()
+        } else {
+            (1.0 - eps) * f0 + eps * f1
+        }
+    }
+
+    #[inline]
+    fn extrapolate(
+        mode: ExtrapolationMode,
+        x: f64,
+        x_b: f64,
+        f_b: f64,
+        neighbor: Option<(f64, f64)>,
+    ) -> Result<f64, RemapError> {
+        match mode {
+            ExtrapolationMode::Strict => Err(RemapError::OutOfBounds(x)),
+            ExtrapolationMode::Constant => Ok(f_b),
+            ExtrapolationMode::Zero => Ok(0.0),
+            ExtrapolationMode::PowerLaw => {
+                let Some((x_n, f_n)) = neighbor else {
+                    return Ok(f_b);
+                };
+                if f_n > 0.0 && f_b > 0.0 {
+                    let ratio = f_n / f_b;
+                    let exponent = (x.ln() - x_b.ln()) / (x_n.ln() - x_b.ln());
+                    Ok(f_b * ratio.powf(exponent))
+                } else {
+                    Ok(0.0)
+                }
+            }
+            ExtrapolationMode::LinearDrop => {
+                let Some((x_n, _)) = neighbor else {
+                    return Ok(f_b);
+                };
+                let eps = (x - x_b) / (x_n - x_b);
+                if eps > -1.0 {
+                    Ok((1.0 - eps.abs()) * f_b)
+                } else {
+                    Ok(0.0)
+                }
+            }
+        }
+    }
+}
+
+/// Trait for remapping values from one grid onto another.
+///
+/// # Examples
+/// ```
+/// use planetes_ext::interp::{ExtrapolationMode, Remap};
+///
+/// let grid = [1.0, 2.0, 4.0];
+/// let values = [10.0, 40.0, 160.0];
+/// let remapped = values
+///     .remap_from(&grid)
+///     .with_lower_bound(ExtrapolationMode::Constant)
+///     .with_upper_bound(ExtrapolationMode::Constant)
+///     .onto_grid(&[0.5, 3.0, 8.0])
+///     .unwrap();
+/// // 0.5 and 8.0 clamp to the boundary values; 3.0 is interpolated in log space.
+/// assert_eq!(remapped[0], 10.0);
+/// assert!((remapped[1] - 80.0).abs() < 1e-9);
+/// assert_eq!(remapped[2], 160.0);
+/// ```
+pub trait Remap {
+    /// Returns a builder that remaps `self` from `original_grid`.
+    fn remap_from<'a>(&'a self, original_grid: &'a [f64]) -> RemapBuilder<'a>;
+}
+
+impl Remap for [f64] {
+    fn remap_from<'a>(&'a self, original_grid: &'a [f64]) -> RemapBuilder<'a> {
+        RemapBuilder::new(original_grid, self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::array;
 
     use super::CubicSpline;
-    use super::{Extrapolate, SplineError};
+    use super::Remap;
+    use super::{Extrapolate, ExtrapolationMode, RemapError, SplineError};
     use super::{bilinear, bilinear_with, linear, linear_with};
 
     #[test]
@@ -462,7 +677,10 @@ mod tests {
         let xp = [0.0, 1.0, 2.0];
         let yp = [10.0, 20.0, 40.0];
         for &x in &[-1.0, 0.0, 0.5, 1.5, 2.0, 3.0] {
-            assert_eq!(linear_with(x, &xp, &yp, Extrapolate::Clamp), linear(x, &xp, &yp));
+            assert_eq!(
+                linear_with(x, &xp, &yp, Extrapolate::Clamp),
+                linear(x, &xp, &yp)
+            );
         }
     }
 
@@ -517,7 +735,10 @@ mod tests {
         let xp = [0.0, 1.0];
         let yp = [0.0, 1.0];
         let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
-        assert_eq!(bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear), 6.0);
+        assert_eq!(
+            bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear),
+            6.0
+        );
     }
 
     #[test]
@@ -649,5 +870,108 @@ mod tests {
             CubicSpline::new(&[0.0, 2.0, 1.0], &[1.0, 2.0, 3.0]),
             Err(SplineError::UnsortedPoints)
         ));
+    }
+
+    // ── remap ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_remap_interpolation_geometric() {
+        let grid = [1.0, 2.0];
+        let values = [10.0, 1000.0];
+        let out = values.remap_from(&grid).onto_grid(&[1.5]).unwrap();
+        // Geometric mean: sqrt(10 * 1000) = 100.
+        assert!((out[0] - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_remap_linear_fallback() {
+        let grid = [0.0, 1.0];
+        let values = [-1.0, 1.0];
+        let out = values.remap_from(&grid).onto_grid(&[0.5]).unwrap();
+        assert_eq!(out, vec![0.0]);
+    }
+
+    #[test]
+    fn test_remap_extrapolation_modes_below() {
+        let grid = [1.0, 2.0, 4.0];
+        let values = [10.0, 40.0, 160.0];
+        let below = [0.5];
+
+        let constant = values
+            .remap_from(&grid)
+            .with_lower_bound(ExtrapolationMode::Constant)
+            .onto_grid(&below)
+            .unwrap();
+        assert_eq!(constant, vec![10.0]);
+
+        let zero = values
+            .remap_from(&grid)
+            .with_lower_bound(ExtrapolationMode::Zero)
+            .onto_grid(&below)
+            .unwrap();
+        assert_eq!(zero, vec![0.0]);
+
+        let drop = values
+            .remap_from(&grid)
+            .with_lower_bound(ExtrapolationMode::LinearDrop)
+            .onto_grid(&below)
+            .unwrap();
+        // eps = (0.5 - 1) / (2 - 1) = -0.5 -> (1 - 0.5) * 10 = 5.
+        assert_eq!(drop, vec![5.0]);
+
+        let power = values
+            .remap_from(&grid)
+            .with_lower_bound(ExtrapolationMode::PowerLaw)
+            .onto_grid(&below)
+            .unwrap();
+        // 10 * (40 / 10)^(ln(0.5) / ln(2)) = 10 * 4^-1 = 2.5.
+        assert!((power[0] - 2.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_remap_upper_bound() {
+        let grid = [1.0, 2.0, 4.0];
+        let values = [10.0, 40.0, 160.0];
+        let above = [8.0];
+        let constant = values
+            .remap_from(&grid)
+            .with_upper_bound(ExtrapolationMode::Constant)
+            .onto_grid(&above)
+            .unwrap();
+        assert_eq!(constant, vec![160.0]);
+    }
+
+    #[test]
+    fn test_remap_strict_errors() {
+        let grid = [1.0, 2.0, 4.0];
+        let values = [10.0, 40.0, 160.0];
+        let result = values.remap_from(&grid).onto_grid(&[0.5]);
+        assert_eq!(result, Err(RemapError::OutOfBounds(0.5)));
+    }
+
+    #[test]
+    fn test_remap_errors() {
+        assert_eq!(
+            [10.0, 40.0].remap_from(&[1.0, 2.0, 4.0]).onto_grid(&[1.0]),
+            Err(RemapError::MismatchedLength)
+        );
+        let empty: [f64; 0] = [];
+        assert_eq!(
+            empty.remap_from(&[]).onto_grid(&[1.0]),
+            Err(RemapError::EmptyGrid)
+        );
+    }
+
+    #[test]
+    fn test_remap_single_point() {
+        let grid = [5.0];
+        let values = [42.0];
+        let out = values
+            .remap_from(&grid)
+            .with_lower_bound(ExtrapolationMode::Constant)
+            .with_upper_bound(ExtrapolationMode::Zero)
+            .onto_grid(&[0.0, 5.0, 10.0])
+            .unwrap();
+        assert_eq!(out, vec![42.0, 42.0, 0.0]);
     }
 }
