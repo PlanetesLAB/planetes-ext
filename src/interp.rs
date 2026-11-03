@@ -127,6 +127,7 @@ pub fn linear_with(x: f64, xp: &[f64], yp: &[f64], extrapolate: Extrapolate) -> 
 /// ```
 #[must_use]
 #[inline]
+#[allow(clippy::needless_pass_by_value)]
 pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> f64 {
     bilinear_with(x, y, xp, yp, zp, Extrapolate::Clamp)
 }
@@ -153,6 +154,7 @@ pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> 
 /// ```
 #[must_use]
 #[inline]
+#[allow(clippy::needless_pass_by_value)]
 pub fn bilinear_with(
     x: f64,
     y: f64,
