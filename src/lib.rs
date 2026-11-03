@@ -3,5 +3,6 @@
 )]
 
 pub mod arrays;
+pub mod interp;
 pub mod io;
 pub mod types;
