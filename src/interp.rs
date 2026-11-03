@@ -217,11 +217,165 @@ fn cell_index(v: f64, grid: &[f64]) -> usize {
     }
 }
 
+/// Error returned when a cubic spline cannot be constructed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplineError {
+    /// The x and y samples have different lengths.
+    DifferentLengths,
+    /// Fewer than two sample points were provided.
+    InsufficientPoints,
+    /// The x samples are not in strictly ascending order.
+    UnsortedPoints,
+    /// A numerically unstable pivot was encountered during construction.
+    NumericalError,
+}
+
+impl std::fmt::Display for SplineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SplineError::DifferentLengths => write!(f, "x and y must have the same length"),
+            SplineError::InsufficientPoints => write!(f, "at least two points are required"),
+            SplineError::UnsortedPoints => write!(f, "x must be in strictly ascending order"),
+            SplineError::NumericalError => write!(f, "numerically unstable spline construction"),
+        }
+    }
+}
+
+impl std::error::Error for SplineError {}
+
+/// Natural cubic spline interpolator over a 1-D grid.
+///
+/// The spline is built once from sample points and then evaluated many times.
+/// The second derivative vanishes at the endpoints (the "natural" boundary
+/// condition). Out-of-bounds evaluations are clamped to the nearest endpoint
+/// value; use [`eval_with`](CubicSpline::eval_with) to extrapolate instead.
+///
+/// # Examples
+/// ```
+/// use planetes_ext::interp::CubicSpline;
+///
+/// let x = [0.0, 1.0, 2.0, 3.0];
+/// let y = [0.0, 2.0, 4.0, 6.0];
+/// let spline = CubicSpline::new(&x, &y).unwrap();
+/// assert_eq!(spline.eval(1.5), 3.0);
+/// ```
+pub struct CubicSpline {
+    x: Vec<f64>,
+    y: Vec<f64>,
+    y2: Vec<f64>,
+}
+
+impl CubicSpline {
+    /// Constructs a natural cubic spline from sample points `(x, y)`.
+    ///
+    /// # Errors
+    /// Returns an error if `x` and `y` differ in length, if fewer than two
+    /// points are given, if `x` is not strictly ascending, or if construction
+    /// is numerically unstable.
+    pub fn new(x: &[f64], y: &[f64]) -> Result<CubicSpline, SplineError> {
+        if x.len() != y.len() {
+            return Err(SplineError::DifferentLengths);
+        }
+        let n = x.len();
+        if n < 2 {
+            return Err(SplineError::InsufficientPoints);
+        }
+        for i in 1..n {
+            if x[i] <= x[i - 1] {
+                return Err(SplineError::UnsortedPoints);
+            }
+        }
+
+        let mut y2 = vec![0.0; n];
+        let mut u = vec![0.0; n - 1];
+
+        for i in 1..n - 1 {
+            let sig = (x[i] - x[i - 1]) / (x[i + 1] - x[i - 1]);
+            let p = sig * y2[i - 1] + 2.0;
+            if p.abs() < f64::EPSILON {
+                return Err(SplineError::NumericalError);
+            }
+            y2[i] = (sig - 1.0) / p;
+            u[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]) - (y[i] - y[i - 1]) / (x[i] - x[i - 1]);
+            u[i] = (6.0 * u[i] / (x[i + 1] - x[i - 1]) - sig * u[i - 1]) / p;
+        }
+
+        for i in (0..n - 1).rev() {
+            y2[i] = y2[i] * y2[i + 1] + u[i];
+        }
+
+        Ok(CubicSpline {
+            x: x.to_vec(),
+            y: y.to_vec(),
+            y2,
+        })
+    }
+
+    /// Evaluates the spline at `x`.
+    ///
+    /// Out-of-bounds values are clamped to the nearest endpoint value. Use
+    /// [`eval_with`](CubicSpline::eval_with) to extrapolate instead.
+    #[must_use]
+    #[inline]
+    pub fn eval(&self, x: f64) -> f64 {
+        self.eval_with(x, Extrapolate::Clamp)
+    }
+
+    /// Evaluates the spline at `x` with an explicit [`Extrapolate`] strategy.
+    ///
+    /// # Examples
+    /// ```
+    /// use planetes_ext::interp::{CubicSpline, Extrapolate};
+    ///
+    /// let x = [0.0, 1.0, 2.0];
+    /// let y = [0.0, 2.0, 4.0];
+    /// let spline = CubicSpline::new(&x, &y).unwrap();
+    /// assert_eq!(spline.eval_with(-1.0, Extrapolate::Clamp), 0.0);
+    /// assert_eq!(spline.eval_with(3.0, Extrapolate::Linear), 6.0);
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn eval_with(&self, x: f64, extrapolate: Extrapolate) -> f64 {
+        if x.is_nan() {
+            return f64::NAN;
+        }
+        let n = self.x.len();
+
+        if x <= self.x[0] {
+            return match extrapolate {
+                Extrapolate::Clamp => self.y[0],
+                Extrapolate::Linear => {
+                    self.y[0] + (self.y[1] - self.y[0]) * (x - self.x[0]) / (self.x[1] - self.x[0])
+                }
+            };
+        }
+        if x >= self.x[n - 1] {
+            return match extrapolate {
+                Extrapolate::Clamp => self.y[n - 1],
+                Extrapolate::Linear => {
+                    self.y[n - 1]
+                        + (self.y[n - 1] - self.y[n - 2]) * (x - self.x[n - 1])
+                            / (self.x[n - 1] - self.x[n - 2])
+                }
+            };
+        }
+
+        let k = cell_index(x, &self.x);
+        let h = self.x[k + 1] - self.x[k];
+        let a = (self.x[k + 1] - x) / h;
+        let b = (x - self.x[k]) / h;
+        a * self.y[k]
+            + b * self.y[k + 1]
+            + ((a * a * a - a) * self.y2[k] + (b * b * b - b) * self.y2[k + 1]) * (h * h) / 6.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::array;
 
-    use super::Extrapolate;
+    use super::CubicSpline;
+    use super::{Extrapolate, SplineError};
     use super::{bilinear, bilinear_with, linear, linear_with};
 
     #[test]
@@ -406,5 +560,94 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ── cubic spline ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_cubic_spline_interpolates_nodes() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [1.0, 3.0, 2.0];
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        assert_eq!(spline.eval(0.0), 1.0);
+        assert_eq!(spline.eval(1.0), 3.0);
+        assert_eq!(spline.eval(2.0), 2.0);
+    }
+
+    #[test]
+    fn test_cubic_spline_interior_values() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [1.0, 3.0, 2.0];
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        // Hand-derived natural-spline values (y2 = [0, -4.5, 0]).
+        assert_eq!(spline.eval(0.5), 2.28125);
+        assert_eq!(spline.eval(1.5), 2.78125);
+    }
+
+    #[test]
+    fn test_cubic_spline_linear_data_is_exact() {
+        let x = [0.0, 1.0, 2.0, 3.0];
+        let y = [0.0, 2.0, 4.0, 6.0]; // y = 2x
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        assert_eq!(spline.eval(0.5), 1.0);
+        assert_eq!(spline.eval(1.25), 2.5);
+        assert_eq!(spline.eval(2.75), 5.5);
+    }
+
+    #[test]
+    fn test_cubic_spline_extrapolates_linear() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [1.0, 3.0, 2.0];
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        // Below: slope (3 - 1) / 1 = 2 -> y(-1) = 1 - 2 = -1.
+        assert_eq!(spline.eval_with(-1.0, Extrapolate::Linear), -1.0);
+        // Above: slope (2 - 3) / 1 = -1 -> y(3) = 2 - 1 = 1.
+        assert_eq!(spline.eval_with(3.0, Extrapolate::Linear), 1.0);
+    }
+
+    #[test]
+    fn test_cubic_spline_clamps() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [1.0, 3.0, 2.0];
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        assert_eq!(spline.eval_with(-1.0, Extrapolate::Clamp), 1.0);
+        assert_eq!(spline.eval_with(3.0, Extrapolate::Clamp), 2.0);
+    }
+
+    #[test]
+    fn test_cubic_spline_eval_defaults_to_clamp() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [1.0, 3.0, 2.0];
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        // Out of bounds, `eval` clamps to the endpoint value.
+        assert_eq!(spline.eval(-1.0), 1.0);
+        assert_eq!(spline.eval(3.0), 2.0);
+        // In bounds, `eval` matches both explicit modes.
+        assert_eq!(spline.eval(0.5), spline.eval_with(0.5, Extrapolate::Clamp));
+        assert_eq!(spline.eval(0.5), spline.eval_with(0.5, Extrapolate::Linear));
+    }
+
+    #[test]
+    fn test_cubic_spline_nan_propagates() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [1.0, 3.0, 2.0];
+        let spline = CubicSpline::new(&x, &y).unwrap();
+        assert!(spline.eval(f64::NAN).is_nan());
+    }
+
+    #[test]
+    fn test_cubic_spline_errors() {
+        assert!(matches!(
+            CubicSpline::new(&[0.0, 1.0], &[1.0]),
+            Err(SplineError::DifferentLengths)
+        ));
+        assert!(matches!(
+            CubicSpline::new(&[0.0], &[1.0]),
+            Err(SplineError::InsufficientPoints)
+        ));
+        assert!(matches!(
+            CubicSpline::new(&[0.0, 2.0, 1.0], &[1.0, 2.0, 3.0]),
+            Err(SplineError::UnsortedPoints)
+        ));
     }
 }
