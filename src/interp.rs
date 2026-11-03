@@ -1,5 +1,7 @@
 //! Interpolation on sorted grids.
 
+use ndarray::ArrayView2;
+
 /// Strategy for evaluating points outside the sample grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Extrapolate {
@@ -104,9 +106,123 @@ pub fn linear_with(x: f64, xp: &[f64], yp: &[f64], extrapolate: Extrapolate) -> 
     y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 }
 
+/// Bilinearly interpolate `(x, y)` onto the grid defined by `xp`, `yp` and `zp`.
+///
+/// `zp` has shape `(yp.len(), xp.len())`, where `zp[[iy, ix]]` holds the value
+/// at `(xp[ix], yp[iy])`. Points outside the grid are clamped to the nearest
+/// edge before interpolation; use [`bilinear_with`] to instead extrapolate.
+///
+/// # Panics
+/// Panics if `zp` does not have shape `(yp.len(), xp.len())`, or if `xp` or `yp`
+/// has fewer than two points.
+///
+/// # Examples
+/// ```
+/// use ndarray::array;
+/// use planetes_ext::interp;
+///
+/// let xp = [0.0, 1.0];
+/// let yp = [0.0, 1.0];
+/// let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
+/// assert_eq!(interp::bilinear(0.5, 0.5, &xp, &yp, zp.view()), 0.25);
+/// assert_eq!(interp::bilinear(2.0, -1.0, &xp, &yp, zp.view()), 0.0); // clamped
+/// ```
+#[must_use]
+#[inline]
+pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> f64 {
+    bilinear_with(x, y, xp, yp, zp, Extrapolate::Clamp)
+}
+
+/// Bilinearly interpolate `(x, y)` onto the grid defined by `xp`, `yp` and `zp`,
+/// using an explicit out-of-bounds [`Extrapolate`] strategy.
+///
+/// `zp` has shape `(yp.len(), xp.len())`, where `zp[[iy, ix]]` holds the value
+/// at `(xp[ix], yp[iy])`.
+///
+/// # Panics
+/// Panics if `zp` does not have shape `(yp.len(), xp.len())`, or if `xp` or `yp`
+/// has fewer than two points.
+///
+/// # Examples
+/// ```
+/// use ndarray::array;
+/// use planetes_ext::interp::{self, Extrapolate};
+///
+/// let xp = [0.0, 1.0];
+/// let yp = [0.0, 1.0];
+/// let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
+/// assert_eq!(interp::bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear), 6.0);
+/// ```
+#[must_use]
+#[inline]
+pub fn bilinear_with(
+    x: f64,
+    y: f64,
+    xp: &[f64],
+    yp: &[f64],
+    zp: ArrayView2<f64>,
+    extrapolate: Extrapolate,
+) -> f64 {
+    assert_eq!(
+        zp.dim(),
+        (yp.len(), xp.len()),
+        "zp must have shape (yp.len(), xp.len())"
+    );
+    assert!(xp.len() >= 2, "xp must have at least two points");
+    assert!(yp.len() >= 2, "yp must have at least two points");
+    if x.is_nan() || y.is_nan() {
+        return f64::NAN;
+    }
+
+    let (xe, ye) = match extrapolate {
+        Extrapolate::Clamp => (
+            x.clamp(xp[0], xp[xp.len() - 1]),
+            y.clamp(yp[0], yp[yp.len() - 1]),
+        ),
+        Extrapolate::Linear => (x, y),
+    };
+
+    let ix = cell_index(xe, xp);
+    let iy = cell_index(ye, yp);
+
+    let x0 = xp[ix];
+    let x1 = xp[ix + 1];
+    let y0 = yp[iy];
+    let y1 = yp[iy + 1];
+
+    let f00 = zp[[iy, ix]];
+    let f10 = zp[[iy, ix + 1]];
+    let f01 = zp[[iy + 1, ix]];
+    let f11 = zp[[iy + 1, ix + 1]];
+
+    let dx = (xe - x0) / (x1 - x0);
+    let dy = (ye - y0) / (y1 - y0);
+
+    let top = f00 + (f10 - f00) * dx;
+    let bot = f01 + (f11 - f01) * dx;
+    top + (bot - top) * dy
+}
+
+/// Returns the left index of the cell containing `v`, clamped to `[0, n - 2]`.
+///
+/// `grid` must be sorted ascending with at least two entries.
+#[inline]
+fn cell_index(v: f64, grid: &[f64]) -> usize {
+    if v <= grid[0] {
+        0
+    } else if v >= grid[grid.len() - 1] {
+        grid.len() - 2
+    } else {
+        grid.partition_point(|&g| g <= v) - 1
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Extrapolate, linear, linear_with};
+    use ndarray::array;
+
+    use super::Extrapolate;
+    use super::{bilinear, bilinear_with, linear, linear_with};
 
     #[test]
     fn test_linear_in_range() {
@@ -202,5 +318,93 @@ mod tests {
         let xp = [5.0];
         let yp = [42.0];
         let _ = linear_with(0.0, &xp, &yp, Extrapolate::Linear);
+    }
+
+    // ── bilinear ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_bilinear_interior() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0, 2.0], [1.0, 3.0]]; // f(x, y) = 2x + y
+        assert_eq!(bilinear(0.5, 0.5, &xp, &yp, zp.view()), 1.5);
+        assert_eq!(bilinear(0.25, 0.75, &xp, &yp, zp.view()), 1.25);
+    }
+
+    #[test]
+    fn test_bilinear_cross_term() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
+        assert_eq!(bilinear(0.5, 0.5, &xp, &yp, zp.view()), 0.25);
+        assert_eq!(bilinear(0.5, 0.25, &xp, &yp, zp.view()), 0.125);
+    }
+
+    #[test]
+    fn test_bilinear_clamps_out_of_bounds() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0, 2.0], [1.0, 3.0]]; // f(x, y) = 2x + y
+        assert_eq!(bilinear(5.0, 5.0, &xp, &yp, zp.view()), 3.0); // (1, 1)
+        assert_eq!(bilinear(-5.0, -5.0, &xp, &yp, zp.view()), 0.0); // (0, 0)
+        assert_eq!(bilinear(5.0, 0.0, &xp, &yp, zp.view()), 2.0); // (1, 0)
+    }
+
+    #[test]
+    fn test_bilinear_non_uniform_grid() {
+        let xp = [0.0, 1.0, 3.0];
+        let yp = [0.0, 2.0];
+        let zp = array![[0.0, 2.0, 6.0], [2.0, 4.0, 8.0]]; // f(x, y) = 2x + y
+        assert_eq!(bilinear(2.0, 1.0, &xp, &yp, zp.view()), 5.0);
+    }
+
+    #[test]
+    fn test_bilinear_with_extrapolate_linear() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
+        assert_eq!(bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear), 6.0);
+    }
+
+    #[test]
+    fn test_bilinear_nan_propagates() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0, 0.0], [0.0, 1.0]];
+        assert!(bilinear(f64::NAN, 0.5, &xp, &yp, zp.view()).is_nan());
+        assert!(bilinear(0.5, f64::NAN, &xp, &yp, zp.view()).is_nan());
+    }
+
+    #[test]
+    #[should_panic(expected = "zp must have shape")]
+    fn test_bilinear_shape_mismatch_panics() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0, 2.0];
+        let zp = array![[0.0, 0.0], [0.0, 1.0]]; // shape (2, 2), expected (3, 2)
+        let _ = bilinear(0.5, 0.5, &xp, &yp, zp.view());
+    }
+
+    #[test]
+    #[should_panic(expected = "xp must have at least two points")]
+    fn test_bilinear_too_few_points_panics() {
+        let xp = [0.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0], [1.0]]; // shape (2, 1)
+        let _ = bilinear(0.5, 0.5, &xp, &yp, zp.view());
+    }
+
+    #[test]
+    fn test_bilinear_with_clamp_matches_bilinear() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.0, 2.0], [1.0, 3.0]];
+        for &x in &[-1.0, 0.0, 0.5, 1.0, 2.0] {
+            for &y in &[-1.0, 0.0, 0.5, 1.0, 2.0] {
+                assert_eq!(
+                    bilinear_with(x, y, &xp, &yp, zp.view(), Extrapolate::Clamp),
+                    bilinear(x, y, &xp, &yp, zp.view())
+                );
+            }
+        }
     }
 }
