@@ -159,7 +159,12 @@ pub fn linear(x: f64, xp: &[f64], yp: &[f64]) -> f64 {
 /// assert_eq!(interp::linear_with(-1.0, &xp, &yp, Extrapolate::Linear).unwrap(), 0.0);
 /// ```
 #[inline]
-pub fn linear_with(x: f64, xp: &[f64], yp: &[f64], extrapolate: Extrapolate) -> Result<f64, InterpError> {
+pub fn linear_with(
+    x: f64,
+    xp: &[f64],
+    yp: &[f64],
+    extrapolate: Extrapolate,
+) -> Result<f64, InterpError> {
     assert_eq!(xp.len(), yp.len(), "xp and yp must have the same length");
     assert!(!xp.is_empty(), "xp must not be empty");
     if x.is_nan() {
@@ -211,6 +216,7 @@ pub fn linear_with(x: f64, xp: &[f64], yp: &[f64], extrapolate: Extrapolate) -> 
 /// ```
 #[must_use]
 #[inline]
+#[allow(clippy::needless_pass_by_value)]
 pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> f64 {
     bilinear_with(x, y, xp, yp, zp, Extrapolate::Clamp).unwrap()
 }
@@ -243,6 +249,7 @@ pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> 
 /// assert_eq!(interp::bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear).unwrap(), 6.0);
 /// ```
 #[inline]
+#[allow(clippy::needless_pass_by_value)]
 pub fn bilinear_with(
     x: f64,
     y: f64,
@@ -409,7 +416,17 @@ impl CubicSpline {
     #[must_use]
     #[inline]
     pub fn eval(&self, x: f64) -> f64 {
-        self.eval_with(x, Extrapolate::Clamp).unwrap()
+        if x.is_nan() {
+            return f64::NAN;
+        }
+        let n = self.x.len();
+        if x < self.x[0] {
+            return self.y[0];
+        }
+        if x > self.x[n - 1] {
+            return self.y[n - 1];
+        }
+        self.eval_in_bounds(x)
     }
 
     /// Evaluates the spline at `x` with an explicit [`Extrapolate`] strategy.
@@ -444,13 +461,21 @@ impl CubicSpline {
             return extrapolate_value(extrapolate, x, self.x[n - 1], self.y[n - 1], neighbor);
         }
 
+        Ok(self.eval_in_bounds(x))
+    }
+
+    /// Evaluates the cubic polynomial on the cell containing `x`.
+    ///
+    /// `x` must lie within `[self.x[0], self.x[self.x.len() - 1]]`.
+    #[inline]
+    fn eval_in_bounds(&self, x: f64) -> f64 {
         let k = cell_index(x, &self.x);
         let h = self.x[k + 1] - self.x[k];
         let a = (self.x[k + 1] - x) / h;
         let b = (x - self.x[k]) / h;
-        Ok(a * self.y[k]
+        a * self.y[k]
             + b * self.y[k + 1]
-            + ((a * a * a - a) * self.y2[k] + (b * b * b - b) * self.y2[k + 1]) * (h * h) / 6.0)
+            + ((a * a * a - a) * self.y2[k] + (b * b * b - b) * self.y2[k + 1]) * (h * h) / 6.0
     }
 }
 
@@ -671,7 +696,10 @@ mod tests {
         let xp = [0.0, 1.0, 2.0];
         let yp = [10.0, 20.0, 40.0];
         // First-segment slope is 10; y(-1) = 10 + 10 * (-1) = 0.
-        assert_eq!(linear_with(-1.0, &xp, &yp, Extrapolate::Linear).unwrap(), 0.0);
+        assert_eq!(
+            linear_with(-1.0, &xp, &yp, Extrapolate::Linear).unwrap(),
+            0.0
+        );
     }
 
     #[test]
@@ -679,7 +707,10 @@ mod tests {
         let xp = [0.0, 1.0, 2.0];
         let yp = [10.0, 20.0, 40.0];
         // Last-segment slope is 20; y(3) = 40 + 20 * 1 = 60.
-        assert_eq!(linear_with(3.0, &xp, &yp, Extrapolate::Linear).unwrap(), 60.0);
+        assert_eq!(
+            linear_with(3.0, &xp, &yp, Extrapolate::Linear).unwrap(),
+            60.0
+        );
     }
 
     #[test]
@@ -721,15 +752,24 @@ mod tests {
             linear_with(3.0, &xp, &yp, Extrapolate::Strict),
             Err(InterpError::OutOfBounds(3.0))
         );
-        assert_eq!(linear_with(0.5, &xp, &yp, Extrapolate::Strict).unwrap(), 15.0);
+        assert_eq!(
+            linear_with(0.5, &xp, &yp, Extrapolate::Strict).unwrap(),
+            15.0
+        );
     }
 
     #[test]
     fn test_linear_with_single_point_falls_back_to_clamp() {
         let xp = [5.0];
         let yp = [42.0];
-        assert_eq!(linear_with(0.0, &xp, &yp, Extrapolate::Linear).unwrap(), 42.0);
-        assert_eq!(linear_with(0.0, &xp, &yp, Extrapolate::PowerLaw).unwrap(), 42.0);
+        assert_eq!(
+            linear_with(0.0, &xp, &yp, Extrapolate::Linear).unwrap(),
+            42.0
+        );
+        assert_eq!(
+            linear_with(0.0, &xp, &yp, Extrapolate::PowerLaw).unwrap(),
+            42.0
+        );
     }
 
     // ── bilinear ──────────────────────────────────────────────────────
@@ -916,8 +956,14 @@ mod tests {
         assert_eq!(spline.eval(-1.0), 1.0);
         assert_eq!(spline.eval(3.0), 2.0);
         // In bounds, `eval` matches both explicit modes.
-        assert_eq!(spline.eval(0.5), spline.eval_with(0.5, Extrapolate::Clamp).unwrap());
-        assert_eq!(spline.eval(0.5), spline.eval_with(0.5, Extrapolate::Linear).unwrap());
+        assert_eq!(
+            spline.eval(0.5),
+            spline.eval_with(0.5, Extrapolate::Clamp).unwrap()
+        );
+        assert_eq!(
+            spline.eval(0.5),
+            spline.eval_with(0.5, Extrapolate::Linear).unwrap()
+        );
     }
 
     #[test]
