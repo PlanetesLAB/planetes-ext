@@ -48,13 +48,9 @@ impl std::error::Error for InterpError {}
 /// `grid` must be sorted ascending with at least two entries.
 #[inline]
 fn cell_index(v: f64, grid: &[f64]) -> usize {
-    if v <= grid[0] {
-        0
-    } else if v >= grid[grid.len() - 1] {
-        grid.len() - 2
-    } else {
-        grid.partition_point(|&g| g <= v) - 1
-    }
+    grid.partition_point(|&g| g <= v)
+        .saturating_sub(1)
+        .min(grid.len() - 2)
 }
 
 /// Computes the out-of-bounds value for a given [`Extrapolate`] mode.
