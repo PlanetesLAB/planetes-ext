@@ -662,6 +662,53 @@ where
 
 pub trait Integrable {
     fn trapezoid(&self, x: &RVector) -> f64;
+
+    /// Computes the integral using Simpson's rule.
+    ///
+    /// `x` must be sorted in strictly ascending order; spacing may be
+    /// non-uniform. When the number of points is even, Simpson's 3/8 rule is
+    /// applied to the last three intervals.
+    ///
+    /// # Panics
+    /// Panics if `self` and `x` have different lengths.
+    ///
+    /// # Examples
+    /// ```
+    /// use ndarray::array;
+    /// use planetes_ext::arrays::Integrable;
+    ///
+    /// let x = array![0.0, 1.0, 2.0];
+    /// let y = array![0.0, 1.0, 8.0]; // y = x^3
+    /// assert_eq!(y.simpson(&x), 4.0);
+    /// ```
+    fn simpson(&self, x: &RVector) -> f64;
+}
+
+/// Simpson's 1/3 rule over one panel of three points.
+#[inline]
+fn simpson_panel(x: &[f64], y: &[f64]) -> f64 {
+    let h0 = x[1] - x[0];
+    let h1 = x[2] - x[1];
+    let hsum = h0 + h1;
+    hsum / 6.0
+        * (y[0] * (2.0 - h1 / h0) + y[1] * (hsum * hsum / (h0 * h1)) + y[2] * (2.0 - h0 / h1))
+}
+
+/// Simpson's 3/8 rule over the last three intervals of four points.
+#[inline]
+fn simpson_38_tail(x: &[f64], y: &[f64]) -> f64 {
+    let h0 = x[1] - x[0];
+    let h1 = x[2] - x[1];
+    let h2 = x[3] - x[2];
+    let d = h0 + h1 + h2;
+    let d3 = d * d * d;
+    let w0 = d * (3.0 * h0 * h0 + 2.0 * h0 * h1 - 2.0 * h0 * h2 - h1 * h1 + h2 * h2)
+        / (12.0 * h0 * (h0 + h1));
+    let w1 = (h0 + h1 - h2) * d3 / (12.0 * h0 * h1 * (h1 + h2));
+    let w2 = (h1 + h2 - h0) * d3 / (12.0 * h1 * h2 * (h0 + h1));
+    let w3 = d * (h0 * h0 - 2.0 * h0 * h2 - h1 * h1 + 2.0 * h1 * h2 + 3.0 * h2 * h2)
+        / (12.0 * h2 * (h1 + h2));
+    w0 * y[0] + w1 * y[1] + w2 * y[2] + w3 * y[3]
 }
 
 impl Integrable for RVector {
@@ -679,6 +726,36 @@ impl Integrable for RVector {
             sum += (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i]);
         }
         sum * 0.5
+    }
+
+    #[inline]
+    fn simpson(&self, x: &RVector) -> f64 {
+        assert_eq!(self.len(), x.len(), "Arrays must have the same length");
+        let n = self.len();
+        if n < 2 {
+            return 0.0;
+        }
+        let ys = self.as_slice().expect("y array must be contiguous");
+        let xs = x.as_slice().expect("x array must be contiguous");
+
+        if n == 2 {
+            return (ys[0] + ys[1]) * (xs[1] - xs[0]) * 0.5;
+        }
+
+        let panels = xs.windows(3).step_by(2).zip(ys.windows(3).step_by(2));
+        let mut sum = 0.0;
+        if n % 2 == 1 {
+            for (xp, yp) in panels {
+                sum += simpson_panel(xp, yp);
+            }
+        } else {
+            // Leave the last three intervals for Simpson's 3/8 rule.
+            for (xp, yp) in panels.take((n - 4) / 2) {
+                sum += simpson_panel(xp, yp);
+            }
+            sum += simpson_38_tail(&xs[n - 4..], &ys[n - 4..]);
+        }
+        sum
     }
 }
 
@@ -1379,6 +1456,78 @@ mod tests {
         let x = array![0.0, 1.0, 2.0];
         let y = array![1.0, 2.0];
         y.trapezoid(&x);
+    }
+
+    // ── simpson ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_simpson_two_points() {
+        let x = array![0.0, 1.0];
+        let y = array![0.0, 1.0];
+        assert_eq!(y.simpson(&x), 0.5);
+    }
+
+    #[test]
+    fn test_simpson_cubic_uniform() {
+        // y = x^3 with uniform spacing: composite Simpson is exact for cubics.
+        let x = array![0.0, 1.0, 2.0];
+        let y = array![0.0, 1.0, 8.0];
+        assert_eq!(y.simpson(&x), 4.0);
+
+        let x = array![0.0, 1.0, 2.0, 3.0, 4.0];
+        let y = array![0.0, 1.0, 8.0, 27.0, 64.0];
+        assert_eq!(y.simpson(&x), 64.0);
+    }
+
+    #[test]
+    fn test_simpson_quadratic_even() {
+        // y = x^2 with 4 points (odd intervals): Simpson's 3/8 rule is exact
+        // for quadratics (and cubics).
+        let x = array![0.0, 1.0, 2.0, 3.0];
+        let y = array![0.0, 1.0, 4.0, 9.0];
+        assert!((y.simpson(&x) - 9.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_simpson_cubic_even() {
+        // y = x^3 with 4 points: Simpson's 3/8 rule is exact for cubics.
+        let x = array![0.0, 1.0, 2.0, 3.0];
+        let y = array![0.0, 1.0, 8.0, 27.0];
+        assert!((y.simpson(&x) - 20.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_simpson_cubic_even_non_uniform() {
+        // The 3/8 weights integrate a cubic exactly even with non-uniform
+        // spacing.
+        let x = array![0.0, 0.5, 1.7, 3.0];
+        let y = array![0.0, 0.125, 4.913, 27.0];
+        assert!((y.simpson(&x) - 20.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_simpson_even_constant_non_uniform() {
+        // All intervals must be covered exactly once by the 1/3 panels plus
+        // the 3/8 tail.
+        let x = array![0.0, 0.3, 1.0, 2.5, 4.0, 6.0];
+        let y = array![3.0, 3.0, 3.0, 3.0, 3.0, 3.0];
+        assert!((y.simpson(&x) - 18.0).abs() < 1e-12);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_simpson_single_point() {
+        let x = array![1.0];
+        let y = array![5.0];
+        assert_eq!(y.simpson(&x), 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Arrays must have the same length")]
+    fn test_simpson_mismatched_lengths() {
+        let x = array![0.0, 1.0, 2.0];
+        let y = array![1.0, 2.0];
+        y.simpson(&x);
     }
 
     // ── as_real_slice ──────────────────────────────────────────────
