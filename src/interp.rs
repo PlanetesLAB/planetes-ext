@@ -3,7 +3,7 @@
 use ndarray::ArrayView2;
 
 /// Strategy for evaluating points outside the sample grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Extrapolate {
     /// Return the nearest endpoint value.
     #[default]
@@ -14,6 +14,8 @@ pub enum Extrapolate {
     PowerLaw,
     /// Return zero.
     Zero,
+    /// Return the given value.
+    Constant(f64),
     /// Taper linearly to zero over one cell beyond the boundary.
     LinearDrop,
     /// Treat out-of-bounds input as an error.
@@ -77,6 +79,7 @@ fn extrapolate_value(
             Ok(f_b + (f_n - f_b) * (x - x_b) / (x_n - x_b))
         }
         Extrapolate::Zero => Ok(0.0),
+        Extrapolate::Constant(c) => Ok(c),
         Extrapolate::LinearDrop => {
             let Some((x_n, _)) = neighbor else {
                 return Ok(f_b);
@@ -226,8 +229,8 @@ pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> 
 ///
 /// `zp` has shape `(yp.len(), xp.len())`, where `zp[[iy, ix]]` holds the value
 /// at `(xp[ix], yp[iy])`. Only [`Extrapolate::Clamp`], [`Extrapolate::Linear`],
-/// [`Extrapolate::Zero`] and [`Extrapolate::Strict`] are supported in two
-/// dimensions.
+/// [`Extrapolate::Zero`], [`Extrapolate::Constant`] and [`Extrapolate::Strict`]
+/// are supported in two dimensions.
 ///
 /// # Panics
 /// Panics if `zp` does not have shape `(yp.len(), xp.len())`, if `xp` or `yp`
@@ -275,6 +278,7 @@ pub fn bilinear_with(
     if x_out || y_out {
         match extrapolate {
             Extrapolate::Zero => return Ok(0.0),
+            Extrapolate::Constant(c) => return Ok(c),
             Extrapolate::Strict => {
                 return Err(InterpError::OutOfBounds(if x_out { x } else { y }));
             }
@@ -731,6 +735,10 @@ mod tests {
         let yp = [10.0, 40.0];
         // Below the grid at x = 0.5.
         assert_eq!(linear_with(0.5, &xp, &yp, Extrapolate::Zero).unwrap(), 0.0);
+        assert_eq!(
+            linear_with(0.5, &xp, &yp, Extrapolate::Constant(1.0)).unwrap(),
+            1.0
+        );
         // eps = (0.5 - 1) / (2 - 1) = -0.5 -> (1 - 0.5) * 10 = 5.
         assert_eq!(
             linear_with(0.5, &xp, &yp, Extrapolate::LinearDrop).unwrap(),
@@ -837,6 +845,10 @@ mod tests {
         assert_eq!(
             bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), Extrapolate::Zero).unwrap(),
             0.0
+        );
+        assert_eq!(
+            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), Extrapolate::Constant(1.0)).unwrap(),
+            1.0
         );
     }
 
