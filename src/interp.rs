@@ -221,25 +221,28 @@ pub fn linear_with(
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
 pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> f64 {
-    bilinear_with(x, y, xp, yp, zp, Extrapolate::Clamp).unwrap()
+    bilinear_with(x, y, xp, yp, zp, Extrapolate::Clamp, Extrapolate::Clamp).unwrap()
 }
 
 /// Bilinearly interpolate `(x, y)` onto the grid defined by `xp`, `yp` and `zp`,
-/// using an explicit out-of-bounds [`Extrapolate`] strategy.
+/// using explicit out-of-bounds [`Extrapolate`] strategies below (`lower`) and
+/// above (`upper`) the grid.
 ///
 /// `zp` has shape `(yp.len(), xp.len())`, where `zp[[iy, ix]]` holds the value
-/// at `(xp[ix], yp[iy])`. Only [`Extrapolate::Clamp`], [`Extrapolate::Linear`],
-/// [`Extrapolate::Zero`], [`Extrapolate::Constant`] and [`Extrapolate::Strict`]
-/// are supported in two dimensions.
+/// at `(xp[ix], yp[iy])`. A point below the grid on either axis takes `lower`,
+/// even if it is above the grid on the other axis; otherwise a point above the
+/// grid on either axis takes `upper`. Only [`Extrapolate::Clamp`],
+/// [`Extrapolate::Linear`], [`Extrapolate::Zero`], [`Extrapolate::Constant`]
+/// and [`Extrapolate::Strict`] are supported in two dimensions.
 ///
 /// # Panics
 /// Panics if `zp` does not have shape `(yp.len(), xp.len())`, if `xp` or `yp`
 /// has fewer than two points, or if [`Extrapolate::PowerLaw`] or
-/// [`Extrapolate::LinearDrop`] is requested.
+/// [`Extrapolate::LinearDrop`] is applied to an out-of-bounds point.
 ///
 /// # Errors
-/// Returns [`InterpError::OutOfBounds`] if `(x, y)` is outside the grid and
-/// [`Extrapolate::Strict`] is requested.
+/// Returns [`InterpError::OutOfBounds`] if `(x, y)` is outside the grid and the
+/// applicable mode is [`Extrapolate::Strict`].
 ///
 /// # Examples
 /// ```
@@ -249,7 +252,8 @@ pub fn bilinear(x: f64, y: f64, xp: &[f64], yp: &[f64], zp: ArrayView2<f64>) -> 
 /// let xp = [0.0, 1.0];
 /// let yp = [0.0, 1.0];
 /// let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
-/// assert_eq!(interp::bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear).unwrap(), 6.0);
+/// let linear = Extrapolate::Linear;
+/// assert_eq!(interp::bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), linear, linear).unwrap(), 6.0);
 /// ```
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
@@ -259,7 +263,8 @@ pub fn bilinear_with(
     xp: &[f64],
     yp: &[f64],
     zp: ArrayView2<f64>,
-    extrapolate: Extrapolate,
+    lower: Extrapolate,
+    upper: Extrapolate,
 ) -> Result<f64, InterpError> {
     assert_eq!(
         zp.dim(),
@@ -272,31 +277,34 @@ pub fn bilinear_with(
         return Ok(f64::NAN);
     }
 
-    let x_out = x < xp[0] || x > xp[xp.len() - 1];
-    let y_out = y < yp[0] || y > yp[yp.len() - 1];
+    let x_lo = x < xp[0];
+    let y_lo = y < yp[0];
+    let x_hi = x > xp[xp.len() - 1];
+    let y_hi = y > yp[yp.len() - 1];
 
-    if x_out || y_out {
-        match extrapolate {
-            Extrapolate::Zero => return Ok(0.0),
-            Extrapolate::Constant(c) => return Ok(c),
-            Extrapolate::Strict => {
-                return Err(InterpError::OutOfBounds(if x_out { x } else { y }));
-            }
-            Extrapolate::PowerLaw | Extrapolate::LinearDrop => {
-                panic!("{extrapolate:?} is not supported for 2D bilinear interpolation");
-            }
-            Extrapolate::Clamp | Extrapolate::Linear => {}
-        }
+    if (x_lo || y_lo)
+        && let Some(value) = bilinear_bound(lower, if x_lo { x } else { y })
+    {
+        return value;
+    }
+    if (x_hi || y_hi)
+        && let Some(value) = bilinear_bound(upper, if x_hi { x } else { y })
+    {
+        return value;
     }
 
-    let (xe, ye) = if matches!(extrapolate, Extrapolate::Clamp) {
-        (
-            x.clamp(xp[0], xp[xp.len() - 1]),
-            y.clamp(yp[0], yp[yp.len() - 1]),
-        )
-    } else {
-        (x, y)
+    let clamp = |v: f64, grid: &[f64]| {
+        let (lo, hi) = (grid[0], grid[grid.len() - 1]);
+        if v < lo && matches!(lower, Extrapolate::Clamp) {
+            lo
+        } else if v > hi && matches!(upper, Extrapolate::Clamp) {
+            hi
+        } else {
+            v
+        }
     };
+    let xe = clamp(x, xp);
+    let ye = clamp(y, yp);
 
     let ix = cell_index(xe, xp);
     let iy = cell_index(ye, yp);
@@ -317,6 +325,21 @@ pub fn bilinear_with(
     let top = f00 + (f10 - f00) * dx;
     let bot = f01 + (f11 - f01) * dx;
     Ok(top + (bot - top) * dy)
+}
+
+/// Returns the value of an out-of-bounds point `v` under `mode`, or `None` if
+/// the point is to be interpolated (clamped or not).
+#[inline]
+fn bilinear_bound(mode: Extrapolate, v: f64) -> Option<Result<f64, InterpError>> {
+    match mode {
+        Extrapolate::Zero => Some(Ok(0.0)),
+        Extrapolate::Constant(c) => Some(Ok(c)),
+        Extrapolate::Strict => Some(Err(InterpError::OutOfBounds(v))),
+        Extrapolate::PowerLaw | Extrapolate::LinearDrop => {
+            panic!("{mode:?} is not supported for 2D bilinear interpolation");
+        }
+        Extrapolate::Clamp | Extrapolate::Linear => None,
+    }
 }
 
 /// Error returned when a cubic spline cannot be constructed.
@@ -823,8 +846,9 @@ mod tests {
         let xp = [0.0, 1.0];
         let yp = [0.0, 1.0];
         let zp = array![[0.0, 0.0], [0.0, 1.0]]; // f(x, y) = x * y
+        let linear = Extrapolate::Linear;
         assert_eq!(
-            bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), Extrapolate::Linear).unwrap(),
+            bilinear_with(2.0, 3.0, &xp, &yp, zp.view(), linear, linear).unwrap(),
             6.0
         );
     }
@@ -834,21 +858,57 @@ mod tests {
         let xp = [0.0, 1.0];
         let yp = [0.0, 1.0];
         let zp = array![[0.0, 2.0], [1.0, 3.0]];
+        let strict = Extrapolate::Strict;
+        let zero = Extrapolate::Zero;
+        let one = Extrapolate::Constant(1.0);
         assert_eq!(
-            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), Extrapolate::Strict),
+            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), strict, strict),
             Err(InterpError::OutOfBounds(2.0))
         );
         assert_eq!(
-            bilinear_with(0.5, -1.0, &xp, &yp, zp.view(), Extrapolate::Strict),
+            bilinear_with(0.5, -1.0, &xp, &yp, zp.view(), strict, strict),
             Err(InterpError::OutOfBounds(-1.0))
         );
         assert_eq!(
-            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), Extrapolate::Zero).unwrap(),
+            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), zero, zero).unwrap(),
             0.0
         );
         assert_eq!(
-            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), Extrapolate::Constant(1.0)).unwrap(),
+            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), one, one).unwrap(),
             1.0
+        );
+    }
+
+    #[test]
+    fn test_bilinear_with_separate_bounds() {
+        let xp = [0.0, 1.0];
+        let yp = [0.0, 1.0];
+        let zp = array![[0.5, 2.0], [1.0, 3.0]];
+        let lower = Extrapolate::Constant(1.0);
+        let upper = Extrapolate::Clamp;
+        // Below the grid on either axis takes the lower mode, also when the
+        // other axis is above the grid.
+        assert_eq!(
+            bilinear_with(-1.0, 0.5, &xp, &yp, zp.view(), lower, upper).unwrap(),
+            1.0
+        );
+        assert_eq!(
+            bilinear_with(2.0, -1.0, &xp, &yp, zp.view(), lower, upper).unwrap(),
+            1.0
+        );
+        // Above the grid is clamped to the edge.
+        assert_eq!(
+            bilinear_with(2.0, 2.0, &xp, &yp, zp.view(), lower, upper).unwrap(),
+            3.0
+        );
+        assert_eq!(
+            bilinear_with(2.0, 0.5, &xp, &yp, zp.view(), lower, upper).unwrap(),
+            2.5
+        );
+        // Inside the grid both modes are irrelevant.
+        assert_eq!(
+            bilinear_with(0.5, 0.5, &xp, &yp, zp.view(), lower, upper).unwrap(),
+            1.625
         );
     }
 
@@ -884,10 +944,11 @@ mod tests {
         let xp = [0.0, 1.0];
         let yp = [0.0, 1.0];
         let zp = array![[0.0, 2.0], [1.0, 3.0]];
+        let clamp = Extrapolate::Clamp;
         for &x in &[-1.0, 0.0, 0.5, 1.0, 2.0] {
             for &y in &[-1.0, 0.0, 0.5, 1.0, 2.0] {
                 assert_eq!(
-                    bilinear_with(x, y, &xp, &yp, zp.view(), Extrapolate::Clamp).unwrap(),
+                    bilinear_with(x, y, &xp, &yp, zp.view(), clamp, clamp).unwrap(),
                     bilinear(x, y, &xp, &yp, zp.view())
                 );
             }
