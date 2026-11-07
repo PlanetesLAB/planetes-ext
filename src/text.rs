@@ -15,6 +15,7 @@
 /// assert!(parse_list("[]").is_empty());
 /// ```
 #[must_use]
+#[inline]
 pub fn parse_list(s: &str) -> Vec<String> {
     let s = s.trim();
     let s = s.trim_matches(&['[', ']'][..]);
@@ -56,6 +57,7 @@ pub fn parse_list(s: &str) -> Vec<String> {
 /// assert_eq!(get_field(line, 2, 5), None);
 /// ```
 #[must_use]
+#[inline]
 pub fn get_field(line: &str, start: usize, end: usize) -> Option<&str> {
     if start >= line.len() {
         return None;

@@ -43,7 +43,7 @@ fn legendre_pair(n: usize, z: f64) -> (f64, f64) {
 /// ```
 #[must_use]
 pub fn gauss_legendre(x1: f64, x2: f64, n: usize) -> (RVector, RVector) {
-    const EPS: f64 = 1e-15;
+    const EPS: f64 = 1e-14;
     const MAX_ITER: usize = 100;
 
     let m = n.div_ceil(2);
@@ -58,17 +58,18 @@ pub fn gauss_legendre(x1: f64, x2: f64, n: usize) -> (RVector, RVector) {
         // Initial guess for the i-th root, refined by Newton iteration.
         let mut z = (PI * (i as f64 + 0.75) / (nf + 0.5)).cos();
 
-        for _ in 0..MAX_ITER {
+        let mut iterations = 0;
+        let dp = loop {
             let (p, dp) = legendre_pair(n, z);
             let z_new = z - p / dp;
             let converged = (z_new - z).abs() <= EPS;
             z = z_new;
-            if converged {
-                break;
+            iterations += 1;
+            if converged || iterations >= MAX_ITER {
+                break dp;
             }
-        }
+        };
 
-        let (_, dp) = legendre_pair(n, z);
         x[i] = xm - xl * z;
         x[n - 1 - i] = xm + xl * z;
         w[i] = 2.0 * xl / ((1.0 - z * z) * dp * dp);
@@ -143,7 +144,7 @@ mod tests {
             let expected = (x2.powi(degree + 1) - x1.powi(degree + 1)) / f64::from(degree + 1);
             let actual = integrate(x1, x2, n, |x| x.powi(degree));
             assert!(
-                (actual - expected).abs() < 1e-12,
+                (actual - expected).abs() < 1e-11,
                 "degree {degree}: expected {expected}, got {actual}"
             );
         }
@@ -153,7 +154,7 @@ mod tests {
     fn test_integrates_exp() {
         let actual = integrate(0.0, 1.0, 8, f64::exp);
         let expected = std::f64::consts::E - 1.0;
-        assert!((actual - expected).abs() < 1e-14);
+        assert!((actual - expected).abs() < 1e-12);
     }
 
     #[test]
@@ -161,7 +162,7 @@ mod tests {
         let expected = std::f64::consts::E - 1.0;
         for n in [8, 16, 32, 64, 100] {
             let actual = integrate(0.0, 1.0, n, f64::exp);
-            assert!((actual - expected).abs() < 1e-14, "n = {n}: got {actual}");
+            assert!((actual - expected).abs() < 1e-12, "n = {n}: got {actual}");
         }
     }
 

@@ -24,6 +24,7 @@ use std::f64::consts::EULER_GAMMA;
 /// assert_eq!(expint(3, 0.0), 0.5);
 /// ```
 #[must_use]
+#[inline]
 pub fn expint(n: u32, x: f64) -> f64 {
     const MAX_ITER: u32 = 200;
 
