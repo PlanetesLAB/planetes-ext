@@ -7,6 +7,7 @@ pub mod arrays;
 pub mod interp;
 pub mod io;
 pub mod quadrature;
+pub mod release;
 pub mod special;
 pub mod text;
 pub mod time;
