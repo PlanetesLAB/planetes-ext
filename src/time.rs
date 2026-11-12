@@ -4,7 +4,8 @@ use std::time::Duration;
 
 /// Formats a [`Duration`] as a compact human-readable string.
 ///
-/// Durations below one minute are shown in seconds with one decimal place.
+/// Durations below one second are shown in whole milliseconds, and durations
+/// below one minute in seconds with one decimal place.
 /// Longer durations add minutes, hours, and days as needed, always including
 /// all smaller units.
 ///
@@ -13,7 +14,8 @@ use std::time::Duration;
 /// use std::time::Duration;
 /// use planetes_ext::time::format_duration;
 ///
-/// assert_eq!(format_duration(Duration::from_millis(500)), "0.5s");
+/// assert_eq!(format_duration(Duration::from_millis(500)), "500ms");
+/// assert_eq!(format_duration(Duration::from_millis(1500)), "1.5s");
 /// assert_eq!(format_duration(Duration::from_secs(61)), "1m 1s");
 /// assert_eq!(format_duration(Duration::from_secs(3661)), "1h 1m 1s");
 /// assert_eq!(format_duration(Duration::from_secs(90061)), "1d 1h 1m 1s");
@@ -23,7 +25,9 @@ pub fn format_duration(d: Duration) -> String {
     let total_secs = d.as_secs();
     let millis = d.subsec_millis();
 
-    if total_secs < 60 {
+    if total_secs == 0 {
+        format!("{millis}ms")
+    } else if total_secs < 60 {
         format!("{total_secs}.{}s", millis / 100)
     } else if total_secs < 3600 {
         let mins = total_secs / 60;
@@ -50,15 +54,15 @@ mod tests {
 
     #[test]
     fn test_zero() {
-        assert_eq!(format_duration(Duration::ZERO), "0.0s");
+        assert_eq!(format_duration(Duration::ZERO), "0ms");
     }
 
     #[test]
-    fn test_sub_second_truncates_to_tenths() {
-        assert_eq!(format_duration(Duration::from_millis(99)), "0.0s");
-        assert_eq!(format_duration(Duration::from_millis(100)), "0.1s");
-        assert_eq!(format_duration(Duration::from_millis(599)), "0.5s");
-        assert_eq!(format_duration(Duration::from_millis(999)), "0.9s");
+    fn test_sub_second_millis() {
+        assert_eq!(format_duration(Duration::from_micros(999)), "0ms");
+        assert_eq!(format_duration(Duration::from_millis(1)), "1ms");
+        assert_eq!(format_duration(Duration::from_millis(99)), "99ms");
+        assert_eq!(format_duration(Duration::from_millis(999)), "999ms");
     }
 
     #[test]
