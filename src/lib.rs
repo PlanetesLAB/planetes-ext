@@ -6,6 +6,7 @@
 pub mod arrays;
 pub mod interp;
 pub mod io;
+pub mod physics;
 pub mod quadrature;
 pub mod release;
 pub mod special;
