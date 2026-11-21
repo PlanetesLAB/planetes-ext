@@ -1,10 +1,13 @@
 //! Physics formulas, in CGS units.
 
+use std::f64::consts::PI;
+
 use codata as cc;
 
 const H: f64 = cc::PLANCK_CONSTANT_CGS;
 const K: f64 = cc::BOLTZMANN_CONSTANT_CGS;
 const C: f64 = cc::SPEED_OF_LIGHT_IN_VACUUM_CGS;
+const G: f64 = cc::NEWTONIAN_CONSTANT_OF_GRAVITATION_CGS;
 
 /// A blackbody at a given temperature.
 ///
@@ -97,6 +100,46 @@ fn x_squared_exp_ratio(x: f64) -> f64 {
     x * x * (-x).exp() / (em1 * em1)
 }
 
+/// Mean thermal speed $\bar{v} = \sqrt{8 k T / (\pi m)}$ (cm s$^{-1}$) of
+/// particles of mass `m` (g) at temperature `t` (K).
+#[must_use]
+#[inline]
+pub fn thermal_speed(t: f64, m: f64) -> f64 {
+    (8.0 * K * t / (PI * m)).sqrt()
+}
+
+/// Doppler parameter $b = \sqrt{2 k T / m}$ (cm s$^{-1}$), the most probable
+/// speed of particles of mass `m` (g) at temperature `t` (K).
+#[must_use]
+#[inline]
+pub fn doppler_b(t: f64, m: f64) -> f64 {
+    (2.0 * K * t / m).sqrt()
+}
+
+/// Isothermal sound speed $c_{\mathrm{s}} = \sqrt{k T / m}$ (cm s$^{-1}$) of a gas with
+/// mean particle mass `m` (g) at temperature `t` (K).
+#[must_use]
+#[inline]
+pub fn sound_speed(t: f64, m: f64) -> f64 {
+    (K * t / m).sqrt()
+}
+
+/// Keplerian orbital speed $v_{\mathrm{K}} = \sqrt{G M / r}$ (cm s$^{-1}$) at radius `r`
+/// (cm) around a mass `m` (g).
+#[must_use]
+#[inline]
+pub fn kepler_velocity(m: f64, r: f64) -> f64 {
+    (G * m / r).sqrt()
+}
+
+/// Keplerian angular frequency $\Omega_{\mathrm{K}} = \sqrt{G M / r^3}$ (s$^{-1}$) at
+/// radius `r` (cm) around a mass `m` (g).
+#[must_use]
+#[inline]
+pub fn omega_kepler(m: f64, r: f64) -> f64 {
+    (G * m / (r * r * r)).sqrt()
+}
+
 #[cfg(test)]
 mod tests {
     use std::f64::consts::PI;
@@ -182,5 +225,22 @@ mod tests {
             .sum();
         let sigma = cc::STEFAN_BOLTZMANN_CONSTANT_CGS;
         assert!(rel(PI * integral, sigma * t.powi(4)) < 1e-10);
+    }
+
+    #[test]
+    fn thermal_speeds() {
+        let (t, m) = (1e4, cc::PROTON_MASS_CGS);
+        assert!(rel(doppler_b(t, m), 1.2849e6) < 1e-4);
+        assert!(rel(thermal_speed(t, m), 2.0 / PI.sqrt() * doppler_b(t, m)) < 1e-14);
+        assert!(rel(sound_speed(t, m), doppler_b(t, m) / 2f64.sqrt()) < 1e-14);
+    }
+
+    #[test]
+    fn earth_orbit() {
+        let (m, r) = (cc::astro::M_SUN_CGS, cc::astro::AU_CGS);
+        assert!(rel(kepler_velocity(m, r), 2.978e6) < 1e-3);
+        assert!(rel(omega_kepler(m, r) * r, kepler_velocity(m, r)) < 1e-14);
+        let period_days = 2.0 * PI / omega_kepler(m, r) / 86_400.0;
+        assert!(rel(period_days, 365.2569) < 1e-4);
     }
 }
