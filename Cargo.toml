@@ -8,6 +8,7 @@ repository = "https://github.com/PlanetesLAB/planetes-ext"
 
 [dependencies]
 codata = "0.2.2"
+jiff = "1.0.1"
 ndarray = "0.17.2"
 num-complex = { version = "0.4.6", optional = true }
 num-traits = "0.2.19"
