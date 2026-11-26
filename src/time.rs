@@ -1,6 +1,10 @@
-//! Formatting helpers for durations.
+//! Formatting helpers for durations and timestamps.
 
 use std::time::Duration;
+
+/// Local time with the time zone abbreviation and UTC offset, e.g.
+/// `1970-01-01 12:00:00 UTC +00:00`.
+pub const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S %Z %:z";
 
 /// Formats a [`Duration`] as a compact human-readable string.
 ///
